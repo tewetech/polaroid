@@ -1,0 +1,3352 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Polaroid Studio - Polaroid Photo Printing Layout Generator</title>
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/tewetech/favicon/refs/heads/main/tech.png">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            serif: ['"Playfair Display"', 'serif'],
+            handwriting: ['Caveat', 'cursive'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          },
+          colors: {
+            brand: {
+              50: '#fdf4f5',
+              100: '#fbe8ea',
+              500: '#e11d48',
+              600: '#be123c',
+              700: '#9f1239',
+              900: '#4c0519'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    :root {
+      --app-height: 100svh;
+    }
+    html, body {
+      height: 100%;
+      height: 100svh;
+      font-family: 'Inter', sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      overflow: hidden;
+      overscroll-behavior: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    input[type="range"] {
+      accent-color: #e11d48;
+    }
+    .custom-scroll {
+      -webkit-overflow-scrolling: touch;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: #1e293b;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 9999px;
+    }
+    .paper-sheet {
+      position: absolute;
+      left: 0;
+      top: 0;
+      background: #ffffff;
+      color: #000000;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+      transform-origin: 0 0;
+      box-sizing: border-box;
+      overflow: visible;
+      contain: layout style;
+    }
+    .photo-card-item {
+      touch-action: pan-y;
+      user-select: none;
+      -webkit-user-drag: element;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, ::before, ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+    @media print {
+      body * {
+        visibility: hidden !important;
+      }
+      #print-workspace, #print-workspace * {
+        visibility: visible !important;
+      }
+      #print-workspace {
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+      }
+      .paper-sheet {
+        position: relative !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        transform: none !important;
+      }
+    }
+  </style>
+  <style id="dynamic-print-page"></style>
+</head>
+<body class="flex flex-col select-none">
+  <header class="h-14 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-3 md:px-6 z-30 shrink-0">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-rose-600 to-amber-500 flex items-center justify-center shadow">
+        <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <rect x="6" y="6" width="12" height="9" rx="1"/>
+          <circle cx="12" cy="18" r="1" fill="currentColor"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-sm md:text-base font-bold text-white tracking-tight flex items-center gap-1.5">
+          Polaroid <span class="text-xs bg-rose-500/20 text-rose-400 font-semibold px-1.5 py-0.5 rounded">Studio</span>
+        </h1>
+        <p class="text-[10px] text-slate-400 hidden sm:block">Polaroid Photo Printing Layout Generator</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-1.5 sm:gap-2.5">
+      <div id="quick-stats-badge" class="hidden sm:flex items-center gap-2 bg-slate-800/80 border border-slate-700/60 px-2.5 py-1 rounded-full text-xs text-slate-300">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span id="stat-info">0 foto • 0 polaroid • 0 lembar</span>
+      </div>
+
+      <button id="btn-open-settings-modal" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition" title="Backup & Pengaturan">
+        <svg class="w-3.5 h-3.5 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+        <span class="hidden sm:inline">Backup</span>
+      </button>
+
+      <button id="btn-open-export" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition">
+        <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+        </svg>
+        <span>Unduh HD</span>
+      </button>
+
+      <button id="btn-download-pdf" class="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="12" y1="18" x2="12" y2="12"/>
+          <line x1="9" y1="15" x2="15" y2="15"/>
+        </svg>
+        <span>PDF</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+    <div id="mobile-tab-bar" class="flex md:hidden bg-slate-900 border-b border-slate-800 text-xs shrink-0 overflow-x-auto custom-scroll">
+      <button data-tab="photos" class="mobile-tab-btn flex-1 py-2.5 px-1.5 text-center font-medium text-rose-400 border-b-2 border-rose-500 whitespace-nowrap">
+        Foto (<span id="mobile-photo-count">0</span>)
+      </button>
+      <button data-tab="paper" class="mobile-tab-btn flex-1 py-2.5 px-1.5 text-center font-medium text-slate-400 border-b-2 border-transparent whitespace-nowrap">
+        Kertas
+      </button>
+      <button data-tab="frame" class="mobile-tab-btn flex-1 py-2.5 px-1.5 text-center font-medium text-slate-400 border-b-2 border-transparent whitespace-nowrap">
+        Polaroid & Cross
+      </button>
+      <button data-tab="text" class="mobile-tab-btn flex-1 py-2.5 px-1.5 text-center font-medium text-slate-400 border-b-2 border-transparent whitespace-nowrap">
+        Teks
+      </button>
+      <button type="button" id="btn-mobile-reset-session" class="flex-1 py-2.5 px-1.5 text-center font-medium text-amber-400 hover:text-amber-300 active:text-amber-200 border-b-2 border-transparent whitespace-nowrap flex items-center justify-center gap-1">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+          <path d="M3 3v5h5"/>
+        </svg>
+        <span>Reset</span>
+      </button>
+    </div>
+
+    <aside id="sidebar-controls" class="w-full md:w-80 lg:w-96 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 overflow-hidden md:h-full">
+      <div class="hidden md:flex border-b border-slate-800 px-3 bg-slate-950/40 text-xs font-medium text-slate-400 items-center">
+        <button data-desk-tab="photos" class="desk-tab-btn px-3 py-3 border-b-2 border-rose-500 text-rose-400 font-semibold">Foto</button>
+        <button data-desk-tab="paper" class="desk-tab-btn px-3 py-3 border-b-2 border-transparent hover:text-slate-300">Kertas</button>
+        <button data-desk-tab="frame" class="desk-tab-btn px-3 py-3 border-b-2 border-transparent hover:text-slate-300">Polaroid & Cross</button>
+        <button data-desk-tab="text" class="desk-tab-btn px-3 py-3 border-b-2 border-transparent hover:text-slate-300">Teks</button>
+        <button type="button" id="btn-desk-reset-session" class="px-3 py-3 border-b-2 border-transparent text-amber-400 hover:text-amber-300 active:text-amber-200 flex items-center gap-1 transition" title="Reset Sesi">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+          <span>Reset</span>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto custom-scroll p-4 space-y-4">
+        <section id="panel-photos" class="tab-panel space-y-3">
+          <div id="dropzone" class="border-2 border-dashed border-slate-700 hover:border-rose-500/80 rounded-xl p-4 text-center cursor-pointer transition bg-slate-800/40 hover:bg-slate-800/70">
+            <input type="file" id="file-input" multiple accept="image/jpeg,image/png,image/webp,image/jpg" class="hidden">
+            <div class="w-10 h-10 mx-auto mb-2 rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+              </svg>
+            </div>
+            <p class="text-xs font-semibold text-slate-200">Sentuh / Tarik Foto ke Sini</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">JPG, JPEG, PNG, WEBP (bisa banyak foto sekaligus)</p>
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
+            <button id="btn-load-sample" class="text-xs text-rose-400 hover:text-rose-300 font-medium flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              <span>Pakai Contoh Foto</span>
+            </button>
+            <button id="btn-clear-all" class="text-xs text-slate-400 hover:text-rose-400 font-medium">Hapus Semua</button>
+          </div>
+
+          <div class="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/60 space-y-2">
+            <div class="flex items-center justify-between text-xs text-slate-300 font-semibold px-0.5">
+              <span>Mode Pasang Foto (Semua)</span>
+              <span class="text-[10px] text-slate-400 font-normal">Shortcut: 1, 2, 3</span>
+            </div>
+            <div class="grid grid-cols-3 gap-1.5">
+              <button type="button" id="btn-mode-fill-all" class="py-1.5 px-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-700 rounded-lg text-xs font-medium text-slate-200 flex items-center justify-center gap-1 transition" title="Fill: Penuhi bingkai (proporsional, sisi terpotong) [1]">
+                <span>Fill (1)</span>
+              </button>
+              <button type="button" id="btn-mode-fit-all" class="py-1.5 px-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-700 rounded-lg text-xs font-medium text-slate-200 flex items-center justify-center gap-1 transition" title="Fit: Tampil utuh proporsional tanpa terpotong [2]">
+                <span>Fit (2)</span>
+              </button>
+              <button type="button" id="btn-mode-stretch-all" class="py-1.5 px-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-700 rounded-lg text-xs font-medium text-slate-200 flex items-center justify-center gap-1 transition" title="Stretch: Paksa penuhi seluruh bingkai [3]">
+                <span>Stretch (3)</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 bg-slate-800/70 border border-slate-700/60 rounded-lg px-3 py-2 text-slate-300">
+            <svg class="w-4 h-4 text-rose-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"/>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+            <span class="text-xs font-medium leading-tight">Tahan & geser foto untuk atur urutan. Tekan foto untuk zoom & edit.</span>
+          </div>
+
+          <div id="photos-list" class="grid grid-cols-3 gap-2 max-h-[44vh] md:max-h-[46vh] overflow-y-auto custom-scroll pr-1"></div>
+        </section>
+
+        <section id="panel-paper" class="tab-panel hidden space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Ukuran Kertas Standar</label>
+            <select id="paper-preset" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-rose-500">
+              <option value="A4" selected>A4 (210 x 297 mm)</option>
+              <option value="A3+">A3+ (330 x 483 mm)</option>
+              <option value="F4">F4 / Folio (215 x 330 mm)</option>
+              <option value="4R">4R (102 x 152 mm)</option>
+              <option value="A3">A3 (297 x 420 mm)</option>
+              <option value="custom">Kustom (Manual mm)</option>
+            </select>
+          </div>
+
+          <div id="custom-paper-fields" class="hidden grid-cols-2 gap-2">
+            <div>
+              <label class="text-[11px] text-slate-400">Lebar (mm)</label>
+              <input type="number" id="paper-w-custom" value="210" min="50" max="1000" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-100">
+            </div>
+            <div>
+              <label class="text-[11px] text-slate-400">Tinggi (mm)</label>
+              <input type="number" id="paper-h-custom" value="297" min="50" max="1000" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-100">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Orientasi Kertas</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" data-orientation="portrait" class="orientation-btn active bg-rose-600/20 border border-rose-500 text-rose-300 rounded-lg py-1.5 text-xs font-medium">Portrait</button>
+              <button type="button" data-orientation="landscape" class="orientation-btn bg-slate-800 border border-slate-700 text-slate-300 rounded-lg py-1.5 text-xs font-medium">Landscape</button>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-800 pt-3">
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-xs font-semibold text-slate-300">Margin Kertas (mm)</label>
+              <span id="margin-val-label" class="text-[11px] text-rose-400 font-mono">8 mm</span>
+            </div>
+            <input type="range" id="paper-margin" min="0" max="25" value="8" step="1" class="w-full">
+            <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+              <span>0mm (Maksimal)</span>
+              <span>12mm</span>
+              <span>25mm</span>
+            </div>
+          </div>
+
+          <div class="bg-slate-800/60 rounded-xl p-3 border border-slate-800 text-xs space-y-1.5">
+            <div class="flex justify-between text-slate-300">
+              <span>Kapasitas Lembar:</span>
+              <span id="calc-capacity" class="font-bold text-rose-400">0 polaroid / lembar</span>
+            </div>
+            <div class="flex justify-between text-slate-300">
+              <span>Grid Tersusun:</span>
+              <span id="calc-grid-dim" class="font-medium text-slate-200">0 kol x 0 baris</span>
+            </div>
+            <div class="flex justify-between text-slate-300">
+              <span>Total Kebutuhan Kertas:</span>
+              <span id="calc-total-pages" class="font-medium text-slate-200">1 Lembar</span>
+            </div>
+          </div>
+
+          <div class="pt-2">
+            <button type="button" id="btn-reset-paper" class="w-full py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white rounded-lg text-xs font-medium border border-slate-700 flex items-center justify-center gap-1.5 transition">
+              <svg class="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+              </svg>
+              <span>Reset Pengaturan Kertas</span>
+            </button>
+          </div>
+        </section>
+
+        <section id="panel-frame" class="tab-panel hidden space-y-4">
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-xs font-semibold text-slate-300">Preset Ukuran Polaroid</label>
+              <button type="button" id="btn-open-save-preset-modal" class="text-[11px] text-rose-400 hover:text-rose-300 font-medium flex items-center gap-1">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                <span>Simpan Preset</span>
+              </button>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <select id="frame-preset" class="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-rose-500">
+                <optgroup label="Preset Standar Polaroid & Instax">
+                  <option value="classic_polaroid" selected>Classic 600 / i-Type (88 x 107 mm - 1 Foto)</option>
+                  <option value="instax_mini">Instax Mini (54 x 86 mm - 1 Foto)</option>
+                  <option value="instax_square">Instax Square (72 x 86 mm - 1 Foto)</option>
+                  <option value="instax_wide">Instax Wide (108 x 86 mm - 1 Foto)</option>
+                  <option value="polaroid_duo">Polaroid Duo (88 x 107 mm - 2 Foto)</option>
+                  <option value="custom">Kustom Ukuran Polaroid</option>
+                </optgroup>
+                <optgroup id="user-frame-presets-group" label="Preset Kustom Saya"></optgroup>
+              </select>
+              <button type="button" id="btn-delete-current-frame-preset" class="hidden p-2 rounded-lg bg-slate-800 hover:bg-rose-950/60 active:bg-rose-800 text-slate-400 hover:text-rose-300 border border-slate-700 transition" title="Hapus preset kustom ini">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div id="custom-frame-dims" class="hidden space-y-2.5 border-b border-slate-800 pb-3">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="text-[11px] text-slate-400">Lebar Polaroid (mm)</label>
+                <input type="number" id="frame-w-custom" value="88" min="30" max="250" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-100">
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400">Tinggi Polaroid (mm)</label>
+                <input type="number" id="frame-h-custom" value="107" min="40" max="350" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-100">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="text-[11px] text-slate-400">Foto per Polaroid</label>
+                <select id="frame-photos-count" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-100">
+                  <option value="1" selected>1 Foto (Standar)</option>
+                  <option value="2">2 Foto</option>
+                  <option value="3">3 Foto</option>
+                  <option value="4">4 Foto</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400">Jarak Foto (mm)</label>
+                <input type="number" id="frame-photo-gap" value="3" min="0" max="15" step="0.5" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-100">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-1.5">
+              <div>
+                <label class="text-[10px] text-slate-400">Margin Atas</label>
+                <input type="number" id="frame-pad-top" value="6" min="1" max="30" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-1.5 py-1 text-xs text-slate-100">
+              </div>
+              <div>
+                <label class="text-[10px] text-slate-400">Margin Samping</label>
+                <input type="number" id="frame-pad-side" value="4.5" step="0.5" min="1" max="25" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-1.5 py-1 text-xs text-slate-100">
+              </div>
+              <div>
+                <label class="text-[10px] text-slate-400">Tinggi Footer</label>
+                <input type="number" id="frame-pad-bottom" value="22" min="5" max="80" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-1.5 py-1 text-xs text-slate-100">
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="text-xs font-semibold text-slate-300">Sudut Lengkung Polaroid</label>
+              <span id="radius-val-label" class="text-[11px] font-mono text-rose-400">1 mm</span>
+            </div>
+            <input type="range" id="frame-corner-radius" min="0" max="8" value="1" step="0.5" class="w-full">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Warna Frame Polaroid</label>
+            <div class="flex items-center gap-2">
+              <button type="button" data-frame-color="#ffffff" class="color-chip w-7 h-7 rounded-full border-2 border-rose-500 bg-white shadow-sm" title="Putih Bersih"></button>
+              <button type="button" data-frame-color="#faf6ee" class="color-chip w-7 h-7 rounded-full border border-slate-700 bg-[#faf6ee] shadow-sm" title="Vintage Cream"></button>
+              <button type="button" data-frame-color="#18181b" class="color-chip w-7 h-7 rounded-full border border-slate-700 bg-zinc-900 shadow-sm" title="Matte Black"></button>
+              <button type="button" data-frame-color="#fce7f3" class="color-chip w-7 h-7 rounded-full border border-slate-700 bg-pink-100 shadow-sm" title="Pastel Pink"></button>
+              <button type="button" data-frame-color="#e0f2fe" class="color-chip w-7 h-7 rounded-full border border-slate-700 bg-sky-100 shadow-sm" title="Soft Blue"></button>
+              <input type="color" id="frame-color-custom" value="#ffffff" class="w-7 h-7 rounded-full cursor-pointer bg-transparent border-0">
+            </div>
+          </div>
+
+          <div class="border-t border-slate-800 pt-3">
+            <div class="flex justify-between items-center mb-1">
+              <label class="text-xs font-semibold text-slate-300">Jarak Antar Polaroid / Spacing</label>
+              <span id="gap-val-label" class="text-[11px] font-mono text-rose-400">0 mm</span>
+            </div>
+            <input type="range" id="grid-gap" min="0" max="15" value="0" step="0.5" class="w-full">
+            <p class="text-[10px] text-slate-500 mt-0.5">Beri jarak agar nyaman saat dipotong pisau / cutter.</p>
+          </div>
+
+          <div class="border-t border-slate-800 pt-3 space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1.5">Garis Potong (Crop Marks)</label>
+              <select id="crop-mark-type" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100">
+                <option value="dashed" selected>Garis Putus-Putus Halus</option>
+                <option value="corners">Corner Marks (Sudut Siku L)</option>
+                <option value="none">Tanpa Garis Potong</option>
+              </select>
+            </div>
+
+            <div id="crop-mark-controls" class="space-y-2.5 bg-slate-800/40 p-2.5 rounded-xl border border-slate-800">
+              <div class="grid grid-cols-2 gap-2 items-center">
+                <div>
+                  <label class="block text-[11px] text-slate-400 mb-1">Warna Garis</label>
+                  <div class="flex items-center gap-2">
+                    <input type="color" id="crop-mark-color" value="#000000" class="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 p-0.5 cursor-pointer">
+                    <span id="crop-color-val-label" class="text-[10px] font-mono text-slate-400">#000000</span>
+                  </div>
+                </div>
+                <div>
+                  <div class="flex justify-between items-center mb-1">
+                    <label class="text-[11px] text-slate-400">Opacity</label>
+                    <span id="crop-opacity-val-label" class="text-[10px] font-mono text-rose-400">100%</span>
+                  </div>
+                  <input type="range" id="crop-mark-opacity" min="10" max="100" value="100" step="5" class="w-full">
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-[11px] text-slate-400 mb-1">Ketebalan Garis</label>
+                <select id="crop-mark-width" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500">
+                  <option value="0.08" selected>Hairline (0.08 mm)</option>
+                  <option value="0.15">Tipis (0.15 mm)</option>
+                  <option value="0.25">Normal (0.25 mm)</option>
+                  <option value="0.4">Tebal (0.40 mm)</option>
+                  <option value="0.6">Ekstra Tebal (0.60 mm)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-2">
+            <button type="button" id="btn-reset-frame" class="w-full py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white rounded-lg text-xs font-medium border border-slate-700 flex items-center justify-center gap-1.5 transition">
+              <svg class="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+              </svg>
+              <span>Reset Polaroid & Cross</span>
+            </button>
+          </div>
+        </section>
+
+        <section id="panel-text" class="tab-panel hidden space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Font Footer Caption</label>
+            <select id="font-family-select" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-rose-500">
+              <option value="font-handwriting">Handwriting (Caveat)</option>
+              <option value="font-sans">Modern Sans (Inter)</option>
+              <option value="font-serif">Classic Serif (Playfair)</option>
+              <option value="font-mono">Typewriter Mono (JetBrains)</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[11px] text-slate-400">Ukuran Huruf</label>
+              <select id="font-size-select" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-100">
+                <option value="9">Kecil (9pt)</option>
+                <option value="12" selected>Sedang (12pt)</option>
+                <option value="15">Besar (15pt)</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[11px] text-slate-400">Warna Huruf</label>
+              <input type="color" id="font-color-picker" value="#1e293b" class="w-full h-8 bg-slate-800 border border-slate-700 rounded-lg p-0.5 cursor-pointer">
+            </div>
+          </div>
+
+          <div class="border-t border-slate-800 pt-3">
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Teks Serentak (Batch)</label>
+            <div class="space-y-1.5">
+              <input type="text" id="batch-caption-input" placeholder="Tulis caption ke semua polaroid..." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100">
+              <div class="flex gap-2">
+                <button type="button" id="btn-apply-batch-text" class="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs py-1 rounded-md text-slate-200">Terapkan Teks</button>
+                <button type="button" id="btn-apply-batch-date" class="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs py-1 rounded-md text-slate-200">+ Tanggal Hari Ini</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-2">
+            <button type="button" id="btn-reset-text" class="w-full py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white rounded-lg text-xs font-medium border border-slate-700 flex items-center justify-center gap-1.5 transition">
+              <svg class="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+              </svg>
+              <span>Reset Pengaturan Teks</span>
+            </button>
+          </div>
+        </section>
+      </div>
+    </aside>
+
+    <section class="flex-1 flex flex-col bg-slate-950 relative overflow-hidden">
+      <div class="h-10 bg-slate-900 border-b border-slate-800 px-3 flex items-center justify-between z-20 shrink-0 text-xs">
+        <span class="text-[11px] text-slate-400 hidden sm:inline font-medium">Pratinjau Layout Polaroid (Scroll mouse / pinch untuk zoom)</span>
+        <div class="flex items-center gap-1.5 ml-auto">
+          <button id="btn-zoom-out" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300" title="Perkecil">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <span id="zoom-level-text" class="text-[11px] font-mono text-slate-400 w-10 text-center">100%</span>
+          <button id="btn-zoom-in" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300" title="Perbesar">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button id="btn-zoom-fit" class="ml-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 font-medium">Fit</button>
+        </div>
+      </div>
+
+      <div id="preview-viewport" class="flex-1 overflow-hidden p-4 md:p-8 flex relative touch-none select-none cursor-grab items-center justify-center">
+        <div id="print-workspace" class="relative m-auto transition-transform duration-100 ease-out origin-center">
+          <div id="paper-element" class="paper-sheet shadow-2xl"></div>
+        </div>
+
+        <div id="page-floating-nav" class="absolute bottom-3 md:bottom-5 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-slate-900/95 border border-slate-700/90 shadow-xl px-3 py-1.5 rounded-full text-xs text-slate-200 pointer-events-auto">
+          <button id="btn-prev-page" class="p-1 rounded-full bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none text-slate-300 transition" title="Lembar Sebelumnya">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span id="page-indicator" class="font-medium text-slate-200 text-[11px] sm:text-xs whitespace-nowrap px-1">Lembar 1 dari 1</span>
+          <button id="btn-next-page" class="p-1 rounded-full bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none text-slate-300 transition" title="Lembar Berikutnya">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="md:hidden h-12 bg-slate-900 border-t border-slate-800 px-4 flex items-center justify-between z-20 shrink-0">
+        <span id="mobile-summary-text" class="text-xs text-slate-400">0 polaroid siap cetak</span>
+        <button id="btn-mobile-edit-sheet" class="text-xs bg-rose-600 active:bg-rose-700 text-white font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+          <span>Pilih & Edit Foto</span>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <div id="reset-modal" class="fixed inset-0 z-50 bg-slate-950/80 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </div>
+          <h3 class="text-sm font-bold text-white">Konfirmasi Reset Sesi</h3>
+        </div>
+        <button id="btn-close-reset-modal" class="text-slate-400 hover:text-white">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p class="text-xs text-slate-300 leading-relaxed">
+        Apakah Anda yakin ingin mereset halaman kerja ini? Semua foto yang baru saja diunggah dan penyesuaian sementara akan dikembalikan seperti semula tanpa menghapus konfigurasi yang telah disimpan di backup/default.
+      </p>
+      <div class="flex gap-2 pt-1">
+        <button id="btn-cancel-reset-modal" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium py-2 rounded-lg text-xs border border-slate-700">
+          Batal
+        </button>
+        <button id="btn-confirm-reset-modal" class="flex-1 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white font-semibold py-2 rounded-lg text-xs shadow">
+          Ya, Reset Sesi
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="slot-modal" class="fixed inset-0 z-50 bg-slate-950/80 hidden items-center justify-center p-3 sm:p-4">
+    <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[92svh]">
+      <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+        <h3 class="text-sm font-bold text-white flex items-center gap-1.5">
+          <span>Editor Foto Polaroid</span>
+          <span id="modal-slot-index" class="text-xs text-rose-400 font-normal">#1</span>
+        </h3>
+        <button id="btn-close-modal" class="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="p-4 overflow-y-auto custom-scroll space-y-4">
+        <div class="flex justify-center items-center py-1">
+          <div id="modal-frame-preview" class="relative bg-white shadow-lg overflow-hidden border border-slate-300 rounded-sm">
+            <div id="modal-photo-window" class="absolute bg-slate-300 overflow-hidden cursor-move touch-none select-none flex items-center justify-center">
+              <img id="modal-photo-img" src="" alt="Edit Foto" class="absolute w-full h-full pointer-events-none origin-center" draggable="false">
+            </div>
+            <div id="modal-frame-text-area" class="absolute flex flex-col items-center justify-center text-center px-1 pointer-events-none">
+              <span id="modal-text-preview" class="text-xs text-slate-900 truncate w-full font-handwriting"></span>
+              <span id="modal-date-preview" class="text-[9px] text-slate-500 font-sans"></span>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-[11px] text-center text-slate-400">Geser foto langsung di dalam kotak untuk mengatur posisi (Pan)</p>
+
+        <div class="space-y-1.5 bg-slate-800/50 p-2.5 rounded-xl border border-slate-800">
+          <div class="flex justify-between items-center text-xs text-slate-300 mb-1">
+            <span class="font-medium">Mode Pasang Foto Ini</span>
+            <span class="text-[10px] text-slate-400">Shortcut: 1, 2, 3</span>
+          </div>
+          <div class="grid grid-cols-3 gap-1.5">
+            <button type="button" id="btn-modal-mode-fill" class="modal-fit-btn py-1 px-2 rounded-lg text-xs font-medium border border-slate-700 bg-slate-800 text-slate-300 transition">Fill (1)</button>
+            <button type="button" id="btn-modal-mode-fit" class="modal-fit-btn py-1 px-2 rounded-lg text-xs font-medium border border-slate-700 bg-slate-800 text-slate-300 transition">Fit (2)</button>
+            <button type="button" id="btn-modal-mode-stretch" class="modal-fit-btn py-1 px-2 rounded-lg text-xs font-medium border border-slate-700 bg-slate-800 text-slate-300 transition">Stretch (3)</button>
+          </div>
+        </div>
+
+        <div class="space-y-3 bg-slate-800/50 p-3 rounded-xl border border-slate-800">
+          <div>
+            <div class="flex justify-between text-xs text-slate-300 mb-1">
+              <span>Zoom Foto</span>
+              <span id="modal-zoom-label" class="font-mono text-rose-400">1.0x</span>
+            </div>
+            <input type="range" id="modal-zoom-slider" min="0.5" max="3" step="0.05" value="1" class="w-full">
+          </div>
+
+          <div class="flex gap-2">
+            <button id="btn-modal-rotate" class="flex-1 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 flex items-center justify-center gap-1.5">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span>Putar 90°</span>
+            </button>
+            <button id="btn-modal-flip" class="flex-1 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 flex items-center justify-center gap-1.5">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 3 4 7 8 11"/><polyline points="4 7 20 7 20 17 16 17"/><polyline points="16 21 20 17 16 13"/></svg>
+              <span>Balik (Flip)</span>
+            </button>
+            <button id="btn-modal-reset" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700">
+              Reset
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Teks / Caption</label>
+            <input type="text" id="modal-caption-input" placeholder="Tulis caption khusus..." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Tanggal</label>
+            <input type="text" id="modal-date-input" placeholder="Contoh: 24 Sep 2026" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100">
+          </div>
+        </div>
+      </div>
+
+      <div class="px-4 py-3 border-t border-slate-800 bg-slate-900 flex items-center justify-between">
+        <button id="btn-modal-delete-photo" class="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          <span>Hapus</span>
+        </button>
+        <button id="btn-modal-save" class="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-semibold shadow">
+          Selesai
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="save-preset-modal" class="fixed inset-0 z-50 bg-slate-950/80 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-white">Simpan Preset Polaroid</h3>
+        <button id="btn-close-save-preset-modal" class="text-slate-400 hover:text-white">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p class="text-xs text-slate-300">Ukuran polaroid saat ini (<span id="save-preset-dim-label" class="font-mono text-rose-400"></span>) akan disimpan sebagai preset baru.</p>
+      <div>
+        <label class="block text-xs font-medium text-slate-300 mb-1">Nama Preset</label>
+        <input type="text" id="input-preset-name" placeholder="Misal: Polaroid Square, Instax Kustom, dll" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-rose-500">
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button id="btn-cancel-save-preset" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium py-2 rounded-lg text-xs border border-slate-700">
+          Batal
+        </button>
+        <button id="btn-confirm-save-preset" class="flex-1 bg-rose-600 hover:bg-rose-500 text-white font-semibold py-2 rounded-lg text-xs shadow">
+          Simpan Preset
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="export-modal" class="fixed inset-0 z-50 bg-slate-950/80 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-white">Unduh Dokumen & Gambar HD</h3>
+        <button id="btn-close-export-modal" class="text-slate-400 hover:text-white">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-300">File dirender dalam skala cetak presisi 300 DPI fisik standar (ukuran mm gambar sama persis dengan ukuran PDF). Jika gambar lebih dari 1 halaman, file otomatis diunduh sebagai arsip ZIP.</p>
+
+      <div class="space-y-2">
+        <label class="block text-xs font-medium text-slate-300">Pilihan Halaman</label>
+        <select id="export-page-select" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100">
+          <option value="current">Halaman Aktif Saat Ini</option>
+          <option value="all">Semua Halaman</option>
+        </select>
+      </div>
+
+      <div class="space-y-2">
+        <label class="block text-xs font-medium text-slate-300">Format Berkas</label>
+        <div class="grid grid-cols-3 gap-2">
+          <button type="button" data-export-fmt="png" class="export-fmt-btn active bg-rose-600/20 border border-rose-500 text-rose-300 rounded-lg py-2 text-xs font-medium">PNG</button>
+          <button type="button" data-export-fmt="jpeg" class="export-fmt-btn bg-slate-800 border border-slate-700 text-slate-300 rounded-lg py-2 text-xs font-medium">JPEG</button>
+          <button type="button" data-export-fmt="pdf" class="export-fmt-btn bg-slate-800 border border-slate-700 text-slate-300 rounded-lg py-2 text-xs font-medium">PDF</button>
+        </div>
+      </div>
+
+      <div id="export-progress-bar" class="hidden space-y-1">
+        <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+          <div id="export-progress-fill" class="bg-rose-500 h-full w-0 transition-all duration-150"></div>
+        </div>
+        <p id="export-status-text" class="text-[10px] text-slate-400 text-center">Merender lembar...</p>
+      </div>
+
+      <button id="btn-start-export" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold py-2 rounded-lg text-xs shadow transition">
+        Mulai Unduh
+      </button>
+    </div>
+  </div>
+
+  <div id="settings-modal" class="fixed inset-0 z-50 bg-slate-950/80 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </div>
+          <h3 class="text-sm font-bold text-white">Cadangan & Default Pengaturan</h3>
+        </div>
+        <button id="btn-close-settings-modal" class="text-slate-400 hover:text-white">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="space-y-3 bg-slate-800/40 p-3.5 rounded-xl border border-slate-800 text-xs">
+        <h4 class="font-semibold text-slate-200 flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <span>Konfigurasi Default Browser</span>
+        </h4>
+        <p class="text-[11px] text-slate-400">Jadikan settingan saat ini (kertas, polaroid, teks, garis) sebagai default setiap kali membuka aplikasi.</p>
+        <div class="flex gap-2 pt-1">
+          <button id="btn-save-as-default" class="flex-1 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-medium py-1.5 px-2.5 rounded-lg text-xs shadow transition">
+            Jadikan Default
+          </button>
+          <button id="btn-reset-factory" class="bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 font-medium py-1.5 px-3 rounded-lg text-xs border border-slate-700 transition">
+            Reset Pabrik
+          </button>
+        </div>
+      </div>
+
+      <div class="space-y-3 bg-slate-800/40 p-3.5 rounded-xl border border-slate-800 text-xs">
+        <h4 class="font-semibold text-slate-200 flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          <span>Ekspor & Impor Pengaturan (JSON)</span>
+        </h4>
+        <p class="text-[11px] text-slate-400">Simpan berkas backup ke perangkat Anda atau pulihkan dari file backup lama.</p>
+        <div class="grid grid-cols-2 gap-2 pt-1">
+          <button id="btn-export-settings" class="bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 font-medium py-2 px-2 rounded-lg text-xs border border-slate-700 flex items-center justify-center gap-1.5 transition">
+            <svg class="w-3.5 h-3.5 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            <span>Ekspor File</span>
+          </button>
+          <button id="btn-import-settings-trigger" class="bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 font-medium py-2 px-2 rounded-lg text-xs border border-slate-700 flex items-center justify-center gap-1.5 transition">
+            <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            <span>Impor File</span>
+          </button>
+          <input type="file" id="settings-file-input" accept=".json,application/json" class="hidden">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-box" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <script>
+    const STORAGE_KEY_SETTINGS = 'polaroid_maker_app_v1_settings';
+    const STORAGE_KEY_PRESETS = 'polaroid_maker_app_v1_presets';
+
+    const FACTORY_DEFAULTS = {
+      paper: {
+        preset: 'A4',
+        width: 210,
+        height: 297,
+        orientation: 'portrait',
+        margin: 8
+      },
+      frame: {
+        preset: 'classic_polaroid',
+        width: 88,
+        height: 107,
+        photosPerCard: 1,
+        padTop: 6,
+        padSide: 4.5,
+        padBottom: 22,
+        photoGap: 3,
+        cornerRadius: 1,
+        color: '#ffffff'
+      },
+      typography: {
+        fontFamily: 'font-handwriting',
+        fontSize: '12',
+        color: '#1e293b'
+      },
+      grid: {
+        gap: 0,
+        cropMarks: 'dashed',
+        cropColor: '#000000',
+        cropOpacity: 1.0,
+        cropWidth: 0.08
+      }
+    };
+
+    const STATE = {
+      photos: [],
+      currentPage: 0,
+      zoomLevel: 1,
+      canvasTranslateX: 0,
+      canvasTranslateY: 0,
+      selectedSlotIndex: null,
+      paper: JSON.parse(JSON.stringify(FACTORY_DEFAULTS.paper)),
+      frame: JSON.parse(JSON.stringify(FACTORY_DEFAULTS.frame)),
+      typography: JSON.parse(JSON.stringify(FACTORY_DEFAULTS.typography)),
+      grid: JSON.parse(JSON.stringify(FACTORY_DEFAULTS.grid)),
+      userFramePresets: [],
+      activeTab: 'photos',
+      exportFormat: 'png'
+    };
+
+    const PAPER_PRESETS = {
+      A4: { w: 210, h: 297 },
+      'A3+': { w: 330, h: 483 },
+      F4: { w: 215, h: 330 },
+      '4R': { w: 102, h: 152 },
+      A3: { w: 297, h: 420 }
+    };
+
+    const POLAROID_PRESETS = {
+      classic_polaroid: { w: 88, h: 107, count: 1, pt: 6, ps: 4.5, pb: 22, gap: 0 },
+      instax_mini: { w: 54, h: 86, count: 1, pt: 5, ps: 4, pb: 19, gap: 0 },
+      instax_square: { w: 72, h: 86, count: 1, pt: 5, ps: 5, pb: 19, gap: 0 },
+      instax_wide: { w: 108, h: 86, count: 1, pt: 5, ps: 4.5, pb: 19, gap: 0 },
+      polaroid_duo: { w: 88, h: 107, count: 2, pt: 6, ps: 5, pb: 20, gap: 3 }
+    };
+
+    const PX_PER_MM_SCREEN = 3.779527559;
+
+    const crcTable = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) {
+        c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      }
+      crcTable[n] = c >>> 0;
+    }
+
+    function getCrc32(bytes) {
+      let crc = 0xFFFFFFFF;
+      for (let i = 0; i < bytes.length; i++) {
+        crc = (crc >>> 8) ^ crcTable[(crc ^ bytes[i]) & 0xFF];
+      }
+      return (crc ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    function setPngDpi(blob, dpi = 300) {
+      return new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const u8 = new Uint8Array(reader.result);
+          if (u8[0] !== 0x89 || u8[1] !== 0x50 || u8[2] !== 0x4E || u8[3] !== 0x47) {
+            resolve(blob);
+            return;
+          }
+          const dpm = Math.round(dpi / 0.0254);
+          const chunkData = new Uint8Array(9);
+          const view = new DataView(chunkData.buffer);
+          view.setUint32(0, dpm, false);
+          view.setUint32(4, dpm, false);
+          chunkData[8] = 1;
+
+          const typeAndData = new Uint8Array(13);
+          typeAndData[0] = 0x70;
+          typeAndData[1] = 0x48;
+          typeAndData[2] = 0x59;
+          typeAndData[3] = 0x73;
+          typeAndData.set(chunkData, 4);
+
+          const crc = getCrc32(typeAndData);
+          const chunk = new Uint8Array(21);
+          const chunkView = new DataView(chunk.buffer);
+          chunkView.setUint32(0, 9, false);
+          chunk.set(typeAndData, 4);
+          chunkView.setUint32(17, crc, false);
+
+          const newU8 = new Uint8Array(u8.length + 21);
+          newU8.set(u8.subarray(0, 33), 0);
+          newU8.set(chunk, 33);
+          newU8.set(u8.subarray(33), 54);
+
+          resolve(new Blob([newU8], { type: 'image/png' }));
+        };
+        reader.onerror = () => resolve(blob);
+        reader.readAsArrayBuffer(blob);
+      });
+    }
+
+    function setJpegDpi(blob, dpi = 300) {
+      return new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const u8 = new Uint8Array(reader.result);
+          if (u8[0] !== 0xFF || u8[1] !== 0xD8) {
+            resolve(blob);
+            return;
+          }
+          if (u8[2] === 0xFF && u8[3] === 0xE0) {
+            const view = new DataView(u8.buffer);
+            u8[13] = 1;
+            view.setUint16(14, dpi, false);
+            view.setUint16(16, dpi, false);
+            resolve(new Blob([u8], { type: 'image/jpeg' }));
+          } else {
+            const app0 = new Uint8Array([
+              0xFF, 0xE0, 0x00, 0x10,
+              0x4A, 0x46, 0x49, 0x46, 0x00,
+              0x01, 0x01,
+              0x01,
+              (dpi >> 8) & 0xFF, dpi & 0xFF,
+              (dpi >> 8) & 0xFF, dpi & 0xFF,
+              0x00, 0x00
+            ]);
+            const newU8 = new Uint8Array(u8.length + app0.length);
+            newU8.set(u8.subarray(0, 2), 0);
+            newU8.set(app0, 2);
+            newU8.set(u8.subarray(2), 2 + app0.length);
+            resolve(new Blob([newU8], { type: 'image/jpeg' }));
+          }
+        };
+        reader.onerror = () => resolve(blob);
+        reader.readAsArrayBuffer(blob);
+      });
+    }
+
+    function canvasToDpiBlob(canvas, format = 'png', dpi = 300) {
+      const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+      return new Promise(resolve => {
+        canvas.toBlob(async rawBlob => {
+          if (!rawBlob) {
+            resolve(null);
+            return;
+          }
+          if (format === 'jpeg') {
+            const dpiBlob = await setJpegDpi(rawBlob, dpi);
+            resolve(dpiBlob);
+          } else {
+            const dpiBlob = await setPngDpi(rawBlob, dpi);
+            resolve(dpiBlob);
+          }
+        }, mime, 0.95);
+      });
+    }
+
+    function hexToRgba(hex, alpha) {
+      let c = (hex || '#000000').replace('#', '');
+      if (c.length === 3) c = c.split('').map(x => x + x).join('');
+      const num = parseInt(c, 16) || 0;
+      const r = (num >> 16) & 255;
+      const g = (num >> 8) & 255;
+      const b = num & 255;
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function showToast(message, type = 'normal') {
+      const container = document.getElementById('toast-box');
+      const el = document.createElement('div');
+      el.className = 'px-3 py-2 rounded-lg text-xs font-medium text-white shadow-lg pointer-events-auto flex items-center gap-2 transform transition-all duration-200 translate-y-2 opacity-0 ' +
+        (type === 'error' ? 'bg-rose-700' : 'bg-slate-800 border border-slate-700 text-slate-100');
+      el.innerHTML = `<span>${message}</span>`;
+      container.appendChild(el);
+
+      requestAnimationFrame(() => {
+        el.classList.remove('translate-y-2', 'opacity-0');
+      });
+
+      setTimeout(() => {
+        el.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => el.remove(), 250);
+      }, 2500);
+    }
+
+    function loadSavedDefaults() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_SETTINGS);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.paper) STATE.paper = Object.assign({}, FACTORY_DEFAULTS.paper, parsed.paper);
+          if (parsed.frame) STATE.frame = Object.assign({}, FACTORY_DEFAULTS.frame, parsed.frame);
+          if (parsed.typography) STATE.typography = Object.assign({}, FACTORY_DEFAULTS.typography, parsed.typography);
+          if (parsed.grid) STATE.grid = Object.assign({}, FACTORY_DEFAULTS.grid, parsed.grid);
+        }
+        const savedPresets = localStorage.getItem(STORAGE_KEY_PRESETS);
+        if (savedPresets) {
+          STATE.userFramePresets = JSON.parse(savedPresets) || [];
+        }
+      } catch (_) {}
+    }
+
+    function populateFramePresetOptions() {
+      const optGroup = document.getElementById('user-frame-presets-group');
+      if (!optGroup) return;
+      optGroup.innerHTML = '';
+      STATE.userFramePresets.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = `${p.name} (${p.w} x ${p.h} mm - ${p.count || 1} Foto)`;
+        optGroup.appendChild(opt);
+      });
+    }
+
+    function syncUIControls() {
+      const paperPresetEl = document.getElementById('paper-preset');
+      paperPresetEl.value = STATE.paper.preset || 'A4';
+      const customPaper = document.getElementById('custom-paper-fields');
+      if (STATE.paper.preset === 'custom') {
+        customPaper.classList.remove('hidden');
+        customPaper.classList.add('grid');
+        document.getElementById('paper-w-custom').value = STATE.paper.width;
+        document.getElementById('paper-h-custom').value = STATE.paper.height;
+      } else {
+        customPaper.classList.add('hidden');
+        customPaper.classList.remove('grid');
+      }
+
+      document.querySelectorAll('.orientation-btn').forEach(b => {
+        const match = b.dataset.orientation === STATE.paper.orientation;
+        b.classList.toggle('active', match);
+        b.classList.toggle('bg-rose-600/20', match);
+        b.classList.toggle('border-rose-500', match);
+        b.classList.toggle('text-rose-300', match);
+        b.classList.toggle('bg-slate-800', !match);
+        b.classList.toggle('border-slate-700', !match);
+        b.classList.toggle('text-slate-300', !match);
+      });
+
+      document.getElementById('paper-margin').value = STATE.paper.margin;
+      document.getElementById('margin-val-label').textContent = `${STATE.paper.margin} mm`;
+
+      populateFramePresetOptions();
+
+      const framePresetEl = document.getElementById('frame-preset');
+      framePresetEl.value = STATE.frame.preset || 'classic_polaroid';
+      const customFrame = document.getElementById('custom-frame-dims');
+      const deletePresetBtn = document.getElementById('btn-delete-current-frame-preset');
+
+      const isUserPreset = STATE.userFramePresets.some(p => p.id === STATE.frame.preset);
+
+      if (STATE.frame.preset === 'custom' || isUserPreset) {
+        customFrame.classList.remove('hidden');
+        document.getElementById('frame-w-custom').value = STATE.frame.width;
+        document.getElementById('frame-h-custom').value = STATE.frame.height;
+        document.getElementById('frame-photos-count').value = STATE.frame.photosPerCard || 1;
+        document.getElementById('frame-photo-gap').value = STATE.frame.photoGap !== undefined ? STATE.frame.photoGap : 3;
+        document.getElementById('frame-pad-top').value = STATE.frame.padTop;
+        document.getElementById('frame-pad-side').value = STATE.frame.padSide;
+        document.getElementById('frame-pad-bottom').value = STATE.frame.padBottom;
+      } else {
+        customFrame.classList.add('hidden');
+      }
+
+      deletePresetBtn.classList.toggle('hidden', !isUserPreset);
+
+      document.getElementById('frame-corner-radius').value = STATE.frame.cornerRadius;
+      document.getElementById('radius-val-label').textContent = `${STATE.frame.cornerRadius} mm`;
+
+      document.querySelectorAll('.color-chip').forEach(c => {
+        const match = c.dataset.frameColor.toLowerCase() === STATE.frame.color.toLowerCase();
+        c.classList.toggle('border-rose-500', match);
+        c.classList.toggle('border-2', match);
+      });
+      document.getElementById('frame-color-custom').value = STATE.frame.color;
+
+      document.getElementById('grid-gap').value = STATE.grid.gap;
+      document.getElementById('gap-val-label').textContent = `${STATE.grid.gap} mm`;
+
+      document.getElementById('crop-mark-type').value = STATE.grid.cropMarks;
+      document.getElementById('crop-mark-controls').style.display = STATE.grid.cropMarks === 'none' ? 'none' : 'block';
+      document.getElementById('crop-mark-color').value = STATE.grid.cropColor;
+      document.getElementById('crop-color-val-label').textContent = STATE.grid.cropColor;
+      document.getElementById('crop-mark-opacity').value = Math.round(STATE.grid.cropOpacity * 100);
+      document.getElementById('crop-opacity-val-label').textContent = `${Math.round(STATE.grid.cropOpacity * 100)}%`;
+      document.getElementById('crop-mark-width').value = STATE.grid.cropWidth;
+
+      document.getElementById('font-family-select').value = STATE.typography.fontFamily;
+      document.getElementById('font-size-select').value = STATE.typography.fontSize;
+      document.getElementById('font-color-picker').value = STATE.typography.color;
+    }
+
+    function getPaperDimensions() {
+      let w = STATE.paper.width;
+      let h = STATE.paper.height;
+      if (STATE.paper.orientation === 'landscape') {
+        return { w: Math.max(w, h), h: Math.min(w, h) };
+      }
+      return { w: Math.min(w, h), h: Math.max(w, h) };
+    }
+
+    function computeGridMetrics() {
+      const paper = getPaperDimensions();
+      const margin = STATE.paper.margin;
+      const usableW = Math.max(0, paper.w - (margin * 2));
+      const usableH = Math.max(0, paper.h - (margin * 2));
+
+      const cardW = STATE.frame.width;
+      const cardH = STATE.frame.height;
+      const gap = STATE.grid.gap;
+
+      const cols = Math.max(1, Math.floor((usableW + gap) / (cardW + gap)));
+      const rows = Math.max(1, Math.floor((usableH + gap) / (cardH + gap)));
+      const capacity = cols * rows;
+
+      const totalGridW = (cols * cardW) + ((cols - 1) * gap);
+      const totalGridH = (rows * cardH) + ((rows - 1) * gap);
+
+      const offsetX = margin + Math.max(0, (usableW - totalGridW) / 2);
+      const offsetY = margin + Math.max(0, (usableH - totalGridH) / 2);
+
+      const photosPerCard = STATE.frame.photosPerCard || 1;
+      const totalCards = Math.max(1, Math.ceil(STATE.photos.length / photosPerCard));
+      const totalPages = Math.max(1, Math.ceil(totalCards / capacity));
+
+      return {
+        paperW: paper.w,
+        paperH: paper.h,
+        cols,
+        rows,
+        capacity,
+        offsetX,
+        offsetY,
+        cardW,
+        cardH,
+        gap,
+        photosPerCard,
+        totalCards,
+        totalPages
+      };
+    }
+
+    function computeDeduplicatedCropSegments(metrics) {
+      if (STATE.grid.cropMarks === 'none') return [];
+      const segments = [];
+
+      if (STATE.grid.cropMarks === 'dashed') {
+        const hMap = new Map();
+        const vMap = new Map();
+
+        for (let r = 0; r < metrics.rows; r++) {
+          for (let c = 0; c < metrics.cols; c++) {
+            const x1 = metrics.offsetX + (c * (metrics.cardW + metrics.gap));
+            const x2 = x1 + metrics.cardW;
+            const y1 = metrics.offsetY + (r * (metrics.cardH + metrics.gap));
+            const y2 = y1 + metrics.cardH;
+
+            const y1Key = y1.toFixed(3);
+            const y2Key = y2.toFixed(3);
+            if (!hMap.has(y1Key)) hMap.set(y1Key, []);
+            if (!hMap.has(y2Key)) hMap.set(y2Key, []);
+            hMap.get(y1Key).push([x1, x2]);
+            hMap.get(y2Key).push([x1, x2]);
+
+            const x1Key = x1.toFixed(3);
+            const x2Key = x2.toFixed(3);
+            if (!vMap.has(x1Key)) vMap.set(x1Key, []);
+            if (!vMap.has(x2Key)) vMap.set(x2Key, []);
+            vMap.get(x1Key).push([y1, y2]);
+            vMap.get(x2Key).push([y1, y2]);
+          }
+        }
+
+        hMap.forEach((intervals, yKey) => {
+          const y = parseFloat(yKey);
+          intervals.sort((a, b) => a[0] - b[0]);
+          const merged = [];
+          intervals.forEach(([start, end]) => {
+            if (!merged.length) {
+              merged.push([start, end]);
+            } else {
+              const last = merged[merged.length - 1];
+              if (start <= last[1] + 0.05) {
+                last[1] = Math.max(last[1], end);
+              } else {
+                merged.push([start, end]);
+              }
+            }
+          });
+          merged.forEach(([x1, x2]) => {
+            segments.push({ x1, y1: y, x2, y2: y });
+          });
+        });
+
+        vMap.forEach((intervals, xKey) => {
+          const x = parseFloat(xKey);
+          intervals.sort((a, b) => a[0] - b[0]);
+          const merged = [];
+          intervals.forEach(([start, end]) => {
+            if (!merged.length) {
+              merged.push([start, end]);
+            } else {
+              const last = merged[merged.length - 1];
+              if (start <= last[1] + 0.05) {
+                last[1] = Math.max(last[1], end);
+              } else {
+                merged.push([start, end]);
+              }
+            }
+          });
+          merged.forEach(([y1, y2]) => {
+            segments.push({ x1: x, y1, x2: x, y2 });
+          });
+        });
+
+        return segments;
+      }
+
+      if (STATE.grid.cropMarks === 'corners') {
+        const markLen = 3.5;
+        const seen = new Set();
+
+        const addSeg = (x1, y1, x2, y2) => {
+          const k1 = `${x1.toFixed(2)},${y1.toFixed(2)}`;
+          const k2 = `${x2.toFixed(2)},${y2.toFixed(2)}`;
+          const key = k1 < k2 ? `${k1}_${k2}` : `${k2}_${k1}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          segments.push({ x1, y1, x2, y2 });
+        };
+
+        for (let r = 0; r < metrics.rows; r++) {
+          for (let c = 0; c < metrics.cols; c++) {
+            const x1 = metrics.offsetX + (c * (metrics.cardW + metrics.gap));
+            const x2 = x1 + metrics.cardW;
+            const y1 = metrics.offsetY + (r * (metrics.cardH + metrics.gap));
+            const y2 = y1 + metrics.cardH;
+
+            addSeg(x1, y1 - markLen, x1, y1);
+            addSeg(x1 - markLen, y1, x1, y1);
+            addSeg(x2, y1 - markLen, x2, y1);
+            addSeg(x2, y1, x2 + markLen, y1);
+            addSeg(x1 - markLen, y2, x1, y2);
+            addSeg(x1, y2, x1, y2 + markLen);
+            addSeg(x2, y2, x2 + markLen, y2);
+            addSeg(x2, y2, x2, y2 + markLen);
+          }
+        }
+
+        return segments;
+      }
+
+      return segments;
+    }
+
+    async function createFastThumbnail(file, maxDim = 320) {
+      if (typeof createImageBitmap === 'function') {
+        try {
+          const bmp = await createImageBitmap(file);
+          let tw = bmp.width;
+          let th = bmp.height;
+          if (tw > maxDim || th > maxDim) {
+            if (tw > th) {
+              th = Math.round((th * maxDim) / tw);
+              tw = maxDim;
+            } else {
+              tw = Math.round((tw * maxDim) / th);
+              th = maxDim;
+            }
+          }
+          const cvs = document.createElement('canvas');
+          cvs.width = tw;
+          cvs.height = th;
+          const ctx = cvs.getContext('2d', { alpha: false });
+          ctx.drawImage(bmp, 0, 0, tw, th);
+          bmp.close();
+          return cvs.toDataURL('image/jpeg', 0.85);
+        } catch (_) {}
+      }
+      return new Promise(resolve => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          let tw = img.width;
+          let th = img.height;
+          if (tw > maxDim || th > maxDim) {
+            if (tw > th) {
+              th = Math.round((th * maxDim) / tw);
+              tw = maxDim;
+            } else {
+              tw = Math.round((tw * maxDim) / th);
+              th = maxDim;
+            }
+          }
+          const cvs = document.createElement('canvas');
+          cvs.width = tw;
+          cvs.height = th;
+          const ctx = cvs.getContext('2d', { alpha: false });
+          ctx.drawImage(img, 0, 0, tw, th);
+          URL.revokeObjectURL(url);
+          resolve(cvs.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = () => {
+          resolve(url);
+        };
+        img.src = url;
+      });
+    }
+
+    function setupUploadHandlers() {
+      const dropzone = document.getElementById('dropzone');
+      const fileInput = document.getElementById('file-input');
+      const btnSample = document.getElementById('btn-load-sample');
+      const btnClear = document.getElementById('btn-clear-all');
+
+      dropzone.addEventListener('click', () => fileInput.click());
+
+      ['dragenter', 'dragover'].forEach(evt => {
+        dropzone.addEventListener(evt, e => {
+          e.preventDefault();
+          dropzone.classList.add('border-rose-500', 'bg-slate-800');
+        }, { passive: false });
+      });
+
+      ['dragleave', 'drop'].forEach(evt => {
+        dropzone.addEventListener(evt, e => {
+          e.preventDefault();
+          dropzone.classList.remove('border-rose-500', 'bg-slate-800');
+        }, { passive: false });
+      });
+
+      dropzone.addEventListener('drop', e => {
+        if (e.dataTransfer && e.dataTransfer.files) {
+          processIncomingFiles(e.dataTransfer.files);
+        }
+      });
+
+      fileInput.addEventListener('change', e => {
+        if (e.target.files) {
+          processIncomingFiles(e.target.files);
+          fileInput.value = '';
+        }
+      });
+
+      btnSample.addEventListener('click', loadSamplePhotos);
+      btnClear.addEventListener('click', () => {
+        if (!STATE.photos.length) return;
+        STATE.photos.forEach(p => {
+          if (p.src && p.src.startsWith('blob:')) URL.revokeObjectURL(p.src);
+        });
+        STATE.photos = [];
+        STATE.currentPage = 0;
+        renderPhotosSidebar();
+        renderLayout();
+        showToast('Semua foto dibersihkan');
+      });
+
+      document.getElementById('btn-mode-fill-all').addEventListener('click', () => setAllPhotosFitMode('fill'));
+      document.getElementById('btn-mode-fit-all').addEventListener('click', () => setAllPhotosFitMode('fit'));
+      document.getElementById('btn-mode-stretch-all').addEventListener('click', () => setAllPhotosFitMode('stretch'));
+    }
+
+    async function processIncomingFiles(fileList) {
+      const validFiles = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+      if (!validFiles.length) {
+        showToast('Pilih format foto JPG, PNG, atau WEBP', 'error');
+        return;
+      }
+
+      showToast(`Memproses ${validFiles.length} foto...`);
+
+      const batchSize = 4;
+      for (let i = 0; i < validFiles.length; i += batchSize) {
+        const chunk = validFiles.slice(i, i + batchSize);
+        const results = await Promise.all(chunk.map(async file => {
+          const thumb = await createFastThumbnail(file);
+          return {
+            id: 'photo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+            name: file.name,
+            file: file,
+            src: thumb,
+            zoom: 1,
+            panX: 0,
+            panY: 0,
+            rotate: 0,
+            flipH: false,
+            fitMode: 'fit',
+            caption: '',
+            date: ''
+          };
+        }));
+        results.forEach(p => STATE.photos.push(p));
+        renderPhotosSidebar();
+        renderLayout();
+      }
+
+      showToast(`${validFiles.length} foto berhasil ditambahkan`);
+    }
+
+    function loadSamplePhotos() {
+      const colors = [
+        ['#f43f5e', '#fb7185', 'Summer Vibes'],
+        ['#3b82f6', '#60a5fa', 'Ocean Breeze'],
+        ['#10b981', '#34d399', 'Nature Glow'],
+        ['#f59e0b', '#fbbf24', 'Golden Hour'],
+        ['#8b5cf6', '#a78bfa', 'Night Out'],
+        ['#ec4899', '#f472b6', 'Best Memories']
+      ];
+
+      colors.forEach(([c1, c2, title], idx) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 600;
+        canvas.height = 600;
+        const ctx = canvas.getContext('2d');
+
+        const grad = ctx.createLinearGradient(0, 0, 600, 600);
+        grad.addColorStop(0, c1);
+        grad.addColorStop(1, c2);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 600, 600);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.beginPath();
+        ctx.arc(300, 300, 180, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 42px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(title, 300, 290);
+        ctx.font = '22px sans-serif';
+        ctx.fillText('Polaroid #' + (idx + 1), 300, 335);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        STATE.photos.push({
+          id: 'sample_' + Date.now() + '_' + idx,
+          file: null,
+          originalSrc: dataUrl,
+          src: dataUrl,
+          name: 'Sample-' + (idx + 1) + '.jpg',
+          zoom: 1,
+          panX: 0,
+          panY: 0,
+          rotate: 0,
+          flipH: false,
+          fitMode: 'fit',
+          caption: title,
+          date: '24 Sep 2026'
+        });
+      });
+
+      renderPhotosSidebar();
+      renderLayout();
+      showToast('6 foto sampel dimuat');
+    }
+
+    let draggedPhotoIdx = null;
+    let touchReorderTimer = null;
+    let touchReorderSrcIdx = null;
+    let touchCloneEl = null;
+    let isTouchReordering = false;
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    function renderPhotosSidebar() {
+      const container = document.getElementById('photos-list');
+      const mobileCount = document.getElementById('mobile-photo-count');
+      const mobileSummary = document.getElementById('mobile-summary-text');
+
+      mobileCount.textContent = STATE.photos.length;
+      mobileSummary.textContent = `${STATE.photos.length} polaroid siap cetak`;
+      container.innerHTML = '';
+
+      const frag = document.createDocumentFragment();
+
+      STATE.photos.forEach((photo, idx) => {
+        const card = document.createElement('div');
+        card.className = 'photo-card-item group relative aspect-[3/4] bg-slate-950 rounded-lg overflow-hidden border border-slate-700/80 cursor-pointer shadow-sm transition-transform';
+        card.dataset.photoIndex = idx;
+        card.setAttribute('draggable', 'true');
+
+        let modeBadge = 'FIT';
+        if (photo.fitMode === 'fill') modeBadge = 'FILL';
+        if (photo.fitMode === 'stretch') modeBadge = 'STR';
+
+        card.innerHTML = `
+          <div class="w-full h-full flex items-center justify-center bg-slate-950/80 p-0.5 overflow-hidden">
+            <img src="${photo.src}" class="w-full h-full object-contain pointer-events-none select-none" alt="${photo.name}" loading="lazy">
+          </div>
+          <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-black/60 opacity-0 group-hover:opacity-100 transition flex flex-col justify-between p-1.5 pointer-events-none">
+            <div class="flex items-center justify-between w-full pointer-events-auto">
+              <span class="text-[8px] font-bold px-1 py-0.5 rounded bg-rose-600/90 text-white">${modeBadge}</span>
+              <div class="flex items-center gap-1">
+                <button type="button" data-dup="${idx}" class="p-1 rounded bg-slate-700/90 hover:bg-slate-600 text-white shadow transition" title="Duplikat Foto">
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                </button>
+                <button type="button" data-del="${idx}" class="p-1 rounded bg-rose-600 hover:bg-rose-500 text-white shadow transition" title="Hapus Foto">
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="w-full flex items-center justify-between">
+              <span class="text-[9px] text-white font-medium truncate">${photo.caption || '#' + (idx + 1)}</span>
+              <svg class="w-3 h-3 text-slate-400 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+              </svg>
+            </div>
+          </div>
+          <span class="absolute top-1 left-1 bg-black/75 text-[9px] font-mono text-white px-1 rounded pointer-events-none">${idx + 1}</span>
+        `;
+
+        card.addEventListener('click', e => {
+          if (e.target.closest('[data-del]') || e.target.closest('[data-dup]') || isTouchReordering) return;
+          openSlotEditor(idx);
+        });
+
+        const delBtn = card.querySelector('[data-del]');
+        delBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          deletePhoto(idx);
+        });
+
+        const dupBtn = card.querySelector('[data-dup]');
+        dupBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          duplicatePhoto(idx);
+        });
+
+        card.addEventListener('dragstart', e => {
+          draggedPhotoIdx = idx;
+          card.classList.add('opacity-40');
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', idx.toString());
+        });
+
+        card.addEventListener('dragend', () => {
+          card.classList.remove('opacity-40');
+          document.querySelectorAll('.photo-card-item').forEach(el => {
+            el.classList.remove('ring-2', 'ring-rose-500', 'scale-[1.02]');
+          });
+          draggedPhotoIdx = null;
+        });
+
+        card.addEventListener('dragover', e => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          card.classList.add('ring-2', 'ring-rose-500', 'scale-[1.02]');
+        });
+
+        card.addEventListener('dragleave', () => {
+          card.classList.remove('ring-2', 'ring-rose-500', 'scale-[1.02]');
+        });
+
+        card.addEventListener('drop', e => {
+          e.preventDefault();
+          card.classList.remove('ring-2', 'ring-rose-500', 'scale-[1.02]');
+          const fromIdx = draggedPhotoIdx !== null ? draggedPhotoIdx : parseInt(e.dataTransfer.getData('text/plain'), 10);
+          const toIdx = idx;
+          if (!isNaN(fromIdx) && fromIdx !== toIdx && STATE.photos[fromIdx]) {
+            const item = STATE.photos.splice(fromIdx, 1)[0];
+            STATE.photos.splice(toIdx, 0, item);
+            renderPhotosSidebar();
+            renderLayout();
+            showToast('Urutan foto berhasil dipindahkan');
+          }
+        });
+
+        card.addEventListener('touchstart', e => {
+          if (e.target.closest('button')) return;
+          const touch = e.touches[0];
+          touchStartX = touch.clientX;
+          touchStartY = touch.clientY;
+          touchReorderSrcIdx = idx;
+          isTouchReordering = false;
+
+          clearTimeout(touchReorderTimer);
+          touchReorderTimer = setTimeout(() => {
+            isTouchReordering = true;
+            if (navigator.vibrate) {
+              try { navigator.vibrate(35); } catch (_) {}
+            }
+            card.classList.add('opacity-30');
+
+            touchCloneEl = card.cloneNode(true);
+            touchCloneEl.style.position = 'fixed';
+            touchCloneEl.style.width = `${card.offsetWidth}px`;
+            touchCloneEl.style.height = `${card.offsetHeight}px`;
+            touchCloneEl.style.left = `${touch.clientX - (card.offsetWidth / 2)}px`;
+            touchCloneEl.style.top = `${touch.clientY - (card.offsetHeight / 2)}px`;
+            touchCloneEl.style.zIndex = '9999';
+            touchCloneEl.style.pointerEvents = 'none';
+            touchCloneEl.style.opacity = '0.9';
+            touchCloneEl.style.transform = 'scale(1.06)';
+            touchCloneEl.style.boxShadow = '0 12px 24px -4px rgba(0,0,0,0.6)';
+            document.body.appendChild(touchCloneEl);
+          }, 240);
+        }, { passive: true });
+
+        card.addEventListener('touchmove', e => {
+          const touch = e.touches[0];
+          if (!isTouchReordering) {
+            const dx = touch.clientX - touchStartX;
+            const dy = touch.clientY - touchStartY;
+            if (Math.hypot(dx, dy) > 8) {
+              clearTimeout(touchReorderTimer);
+            }
+            return;
+          }
+
+          e.preventDefault();
+          if (touchCloneEl) {
+            touchCloneEl.style.left = `${touch.clientX - (card.offsetWidth / 2)}px`;
+            touchCloneEl.style.top = `${touch.clientY - (card.offsetHeight / 2)}px`;
+          }
+
+          const elemBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+          const targetCard = elemBelow ? elemBelow.closest('.photo-card-item') : null;
+          document.querySelectorAll('.photo-card-item').forEach(c => {
+            if (c === targetCard) {
+              c.classList.add('ring-2', 'ring-rose-500');
+            } else {
+              c.classList.remove('ring-2', 'ring-rose-500');
+            }
+          });
+        }, { passive: false });
+
+        const endTouchFn = e => {
+          clearTimeout(touchReorderTimer);
+          if (!isTouchReordering) {
+            touchReorderSrcIdx = null;
+            return;
+          }
+
+          if (touchCloneEl) {
+            touchCloneEl.remove();
+            touchCloneEl = null;
+          }
+
+          card.classList.remove('opacity-30');
+          document.querySelectorAll('.photo-card-item').forEach(c => {
+            c.classList.remove('ring-2', 'ring-rose-500');
+          });
+
+          const touch = e.changedTouches ? e.changedTouches[0] : null;
+          if (touch && touchReorderSrcIdx !== null) {
+            const elemBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+            const targetCard = elemBelow ? elemBelow.closest('.photo-card-item') : null;
+            if (targetCard && targetCard.dataset.photoIndex !== undefined) {
+              const targetIdx = parseInt(targetCard.dataset.photoIndex, 10);
+              if (!isNaN(targetIdx) && targetIdx !== touchReorderSrcIdx && STATE.photos[touchReorderSrcIdx]) {
+                const item = STATE.photos.splice(touchReorderSrcIdx, 1)[0];
+                STATE.photos.splice(targetIdx, 0, item);
+                renderPhotosSidebar();
+                renderLayout();
+                showToast('Urutan foto berhasil dipindahkan');
+              }
+            }
+          }
+
+          setTimeout(() => {
+            isTouchReordering = false;
+            touchReorderSrcIdx = null;
+          }, 50);
+        };
+
+        card.addEventListener('touchend', endTouchFn, { passive: true });
+        card.addEventListener('touchcancel', endTouchFn, { passive: true });
+
+        frag.appendChild(card);
+      });
+
+      container.appendChild(frag);
+    }
+
+    function deletePhoto(idx) {
+      const item = STATE.photos[idx];
+      if (item && item.src && item.src.startsWith('blob:')) {
+        URL.revokeObjectURL(item.src);
+      }
+      STATE.photos.splice(idx, 1);
+      const metrics = computeGridMetrics();
+      if (STATE.currentPage >= metrics.totalPages) {
+        STATE.currentPage = Math.max(0, metrics.totalPages - 1);
+      }
+      renderPhotosSidebar();
+      renderLayout();
+    }
+
+    function duplicatePhoto(idx) {
+      const orig = STATE.photos[idx];
+      if (!orig) return;
+      const copy = {
+        id: 'photo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+        name: orig.name ? (orig.name.replace(/(\.[^.]+)?$/, ' (Salinan)$1')) : 'Salinan Foto',
+        file: orig.file,
+        src: orig.src,
+        originalSrc: orig.originalSrc || orig.src,
+        zoom: orig.zoom || 1,
+        panX: orig.panX || 0,
+        panY: orig.panY || 0,
+        rotate: orig.rotate || 0,
+        flipH: !!orig.flipH,
+        fitMode: orig.fitMode || 'fit',
+        caption: orig.caption || '',
+        date: orig.date || ''
+      };
+      STATE.photos.splice(idx + 1, 0, copy);
+      renderPhotosSidebar();
+      renderLayout();
+      showToast('Foto berhasil diduplikat');
+    }
+
+    function setPhotoFitMode(idx, mode) {
+      if (idx === null || !STATE.photos[idx]) return;
+      STATE.photos[idx].fitMode = mode;
+      updateModalFitButtons(mode);
+      updateModalPreviewTransforms();
+      renderPhotosSidebar();
+      renderLayout();
+      showToast(`Mode foto #${idx + 1} diatur ke ${mode.toUpperCase()}`);
+    }
+
+    function setAllPhotosFitMode(mode) {
+      if (!STATE.photos.length) {
+        showToast('Unggah foto terlebih dahulu', 'error');
+        return;
+      }
+      STATE.photos.forEach(p => p.fitMode = mode);
+      if (STATE.selectedSlotIndex !== null) {
+        updateModalFitButtons(mode);
+        updateModalPreviewTransforms();
+      }
+      renderPhotosSidebar();
+      renderLayout();
+      showToast(`Semua foto diatur ke mode ${mode.toUpperCase()}`);
+    }
+
+    function updateModalFitButtons(mode) {
+      const curMode = mode || 'fit';
+      const btnFill = document.getElementById('btn-modal-mode-fill');
+      const btnFit = document.getElementById('btn-modal-mode-fit');
+      const btnStretch = document.getElementById('btn-modal-mode-stretch');
+      if (!btnFill || !btnFit || !btnStretch) return;
+
+      [btnFill, btnFit, btnStretch].forEach(b => {
+        b.classList.remove('bg-rose-600', 'text-white', 'border-rose-500');
+        b.classList.add('bg-slate-800', 'text-slate-300', 'border-slate-700');
+      });
+
+      if (curMode === 'fill') {
+        btnFill.classList.add('bg-rose-600', 'text-white', 'border-rose-500');
+        btnFill.classList.remove('bg-slate-800', 'text-slate-300', 'border-slate-700');
+      } else if (curMode === 'stretch') {
+        btnStretch.classList.add('bg-rose-600', 'text-white', 'border-rose-500');
+        btnStretch.classList.remove('bg-slate-800', 'text-slate-300', 'border-slate-700');
+      } else {
+        btnFit.classList.add('bg-rose-600', 'text-white', 'border-rose-500');
+        btnFit.classList.remove('bg-slate-800', 'text-slate-300', 'border-slate-700');
+      }
+    }
+
+    function switchTab(tabId) {
+      STATE.activeTab = tabId;
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      const panel = document.getElementById('panel-' + tabId);
+      if (panel) panel.classList.remove('hidden');
+
+      document.querySelectorAll('.mobile-tab-btn').forEach(btn => {
+        const match = btn.dataset.tab === tabId;
+        btn.classList.toggle('text-rose-400', match);
+        btn.classList.toggle('border-rose-500', match);
+        btn.classList.toggle('text-slate-400', !match);
+        btn.classList.toggle('border-transparent', !match);
+      });
+
+      document.querySelectorAll('.desk-tab-btn').forEach(btn => {
+        const match = btn.dataset.deskTab === tabId;
+        btn.classList.toggle('text-rose-400', match);
+        btn.classList.toggle('border-rose-500', match);
+        btn.classList.toggle('text-slate-400', !match);
+        btn.classList.toggle('border-transparent', !match);
+      });
+    }
+
+    function setupControlListeners() {
+      document.querySelectorAll('.mobile-tab-btn').forEach(b => {
+        b.addEventListener('click', () => switchTab(b.dataset.tab));
+      });
+      document.querySelectorAll('.desk-tab-btn').forEach(b => {
+        b.addEventListener('click', () => switchTab(b.dataset.deskTab));
+      });
+
+      document.getElementById('paper-preset').addEventListener('change', e => {
+        const val = e.target.value;
+        STATE.paper.preset = val;
+        const customFields = document.getElementById('custom-paper-fields');
+        if (val === 'custom') {
+          customFields.classList.remove('hidden');
+          customFields.classList.add('grid');
+          STATE.paper.width = parseFloat(document.getElementById('paper-w-custom').value) || 210;
+          STATE.paper.height = parseFloat(document.getElementById('paper-h-custom').value) || 297;
+        } else {
+          customFields.classList.add('hidden');
+          customFields.classList.remove('grid');
+          STATE.paper.width = PAPER_PRESETS[val].w;
+          STATE.paper.height = PAPER_PRESETS[val].h;
+        }
+        applyZoom(0);
+        renderLayout();
+      });
+
+      ['paper-w-custom', 'paper-h-custom'].forEach(id => {
+        document.getElementById(id).addEventListener('input', () => {
+          STATE.paper.width = parseFloat(document.getElementById('paper-w-custom').value) || 210;
+          STATE.paper.height = parseFloat(document.getElementById('paper-h-custom').value) || 297;
+          applyZoom(0);
+          renderLayout();
+        });
+      });
+
+      document.querySelectorAll('.orientation-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.orientation-btn').forEach(b => {
+            b.classList.remove('active', 'bg-rose-600/20', 'border-rose-500', 'text-rose-300');
+            b.classList.add('bg-slate-800', 'border-slate-700', 'text-slate-300');
+          });
+          btn.classList.add('active', 'bg-rose-600/20', 'border-rose-500', 'text-rose-300');
+          btn.classList.remove('bg-slate-800', 'border-slate-700', 'text-slate-300');
+          STATE.paper.orientation = btn.dataset.orientation;
+          applyZoom(0);
+          renderLayout();
+        });
+      });
+
+      const marginInput = document.getElementById('paper-margin');
+      marginInput.addEventListener('input', e => {
+        STATE.paper.margin = parseFloat(e.target.value);
+        document.getElementById('margin-val-label').textContent = `${STATE.paper.margin} mm`;
+        renderLayout();
+      });
+
+      function updateFrameFromCustomInputs() {
+        STATE.frame.width = parseFloat(document.getElementById('frame-w-custom').value) || 88;
+        STATE.frame.height = parseFloat(document.getElementById('frame-h-custom').value) || 107;
+        STATE.frame.photosPerCard = parseInt(document.getElementById('frame-photos-count').value, 10) || 1;
+        STATE.frame.photoGap = parseFloat(document.getElementById('frame-photo-gap').value) || 3;
+        STATE.frame.padTop = parseFloat(document.getElementById('frame-pad-top').value) || 6;
+        STATE.frame.padSide = parseFloat(document.getElementById('frame-pad-side').value) || 4.5;
+        STATE.frame.padBottom = parseFloat(document.getElementById('frame-pad-bottom').value) || 22;
+      }
+
+      document.getElementById('frame-preset').addEventListener('change', e => {
+        const val = e.target.value;
+        STATE.frame.preset = val;
+        const customFrame = document.getElementById('custom-frame-dims');
+        const deletePresetBtn = document.getElementById('btn-delete-current-frame-preset');
+
+        const userPreset = STATE.userFramePresets.find(p => p.id === val);
+        if (userPreset) {
+          customFrame.classList.remove('hidden');
+          deletePresetBtn.classList.remove('hidden');
+          STATE.frame.width = userPreset.w;
+          STATE.frame.height = userPreset.h;
+          STATE.frame.photosPerCard = userPreset.count || 1;
+          STATE.frame.photoGap = userPreset.gap !== undefined ? userPreset.gap : 3;
+          STATE.frame.padTop = userPreset.pt;
+          STATE.frame.padSide = userPreset.ps;
+          STATE.frame.padBottom = userPreset.pb;
+
+          document.getElementById('frame-w-custom').value = userPreset.w;
+          document.getElementById('frame-h-custom').value = userPreset.h;
+          document.getElementById('frame-photos-count').value = userPreset.count || 1;
+          document.getElementById('frame-photo-gap').value = userPreset.gap !== undefined ? userPreset.gap : 3;
+          document.getElementById('frame-pad-top').value = userPreset.pt;
+          document.getElementById('frame-pad-side').value = userPreset.ps;
+          document.getElementById('frame-pad-bottom').value = userPreset.pb;
+        } else if (val === 'custom') {
+          customFrame.classList.remove('hidden');
+          deletePresetBtn.classList.add('hidden');
+          updateFrameFromCustomInputs();
+        } else {
+          customFrame.classList.add('hidden');
+          deletePresetBtn.classList.add('hidden');
+          const p = POLAROID_PRESETS[val];
+          STATE.frame.width = p.w;
+          STATE.frame.height = p.h;
+          STATE.frame.photosPerCard = p.count;
+          STATE.frame.photoGap = p.gap;
+          STATE.frame.padTop = p.pt;
+          STATE.frame.padSide = p.ps;
+          STATE.frame.padBottom = p.pb;
+        }
+        renderLayout();
+      });
+
+      ['frame-w-custom', 'frame-h-custom', 'frame-photos-count', 'frame-photo-gap', 'frame-pad-top', 'frame-pad-side', 'frame-pad-bottom'].forEach(id => {
+        document.getElementById(id).addEventListener('input', () => {
+          updateFrameFromCustomInputs();
+          renderLayout();
+        });
+      });
+
+      const presetModal = document.getElementById('save-preset-modal');
+      const btnOpenSavePreset = document.getElementById('btn-open-save-preset-modal');
+      const btnCloseSavePreset = document.getElementById('btn-close-save-preset-modal');
+      const btnCancelSavePreset = document.getElementById('btn-cancel-save-preset');
+      const btnConfirmSavePreset = document.getElementById('btn-confirm-save-preset');
+      const btnDeletePreset = document.getElementById('btn-delete-current-frame-preset');
+
+      btnOpenSavePreset.addEventListener('click', () => {
+        document.getElementById('save-preset-dim-label').textContent = `${STATE.frame.width} x ${STATE.frame.height} mm (${STATE.frame.photosPerCard || 1} Foto)`;
+        document.getElementById('input-preset-name').value = '';
+        presetModal.classList.remove('hidden');
+        presetModal.classList.add('flex');
+      });
+
+      const closeSavePresetModal = () => {
+        presetModal.classList.add('hidden');
+        presetModal.classList.remove('flex');
+      };
+
+      btnCloseSavePreset.addEventListener('click', closeSavePresetModal);
+      btnCancelSavePreset.addEventListener('click', closeSavePresetModal);
+
+      btnConfirmSavePreset.addEventListener('click', () => {
+        const name = document.getElementById('input-preset-name').value.trim();
+        if (!name) {
+          showToast('Masukkan nama preset terlebih dahulu', 'error');
+          return;
+        }
+        const newPreset = {
+          id: 'user_preset_' + Date.now(),
+          name: name,
+          w: STATE.frame.width,
+          h: STATE.frame.height,
+          count: STATE.frame.photosPerCard || 1,
+          gap: STATE.frame.photoGap !== undefined ? STATE.frame.photoGap : 3,
+          pt: STATE.frame.padTop,
+          ps: STATE.frame.padSide,
+          pb: STATE.frame.padBottom
+        };
+        STATE.userFramePresets.push(newPreset);
+        try {
+          localStorage.setItem(STORAGE_KEY_PRESETS, JSON.stringify(STATE.userFramePresets));
+        } catch (_) {}
+
+        STATE.frame.preset = newPreset.id;
+        populateFramePresetOptions();
+        syncUIControls();
+        renderLayout();
+        closeSavePresetModal();
+        showToast(`Preset "${name}" berhasil disimpan`);
+      });
+
+      btnDeletePreset.addEventListener('click', () => {
+        const currentId = STATE.frame.preset;
+        const idx = STATE.userFramePresets.findIndex(p => p.id === currentId);
+        if (idx !== -1) {
+          const removed = STATE.userFramePresets.splice(idx, 1)[0];
+          try {
+            localStorage.setItem(STORAGE_KEY_PRESETS, JSON.stringify(STATE.userFramePresets));
+          } catch (_) {}
+          STATE.frame.preset = 'classic_polaroid';
+          const p = POLAROID_PRESETS['classic_polaroid'];
+          STATE.frame.width = p.w;
+          STATE.frame.height = p.h;
+          STATE.frame.photosPerCard = p.count;
+          STATE.frame.photoGap = p.gap;
+          STATE.frame.padTop = p.pt;
+          STATE.frame.padSide = p.ps;
+          STATE.frame.padBottom = p.pb;
+          populateFramePresetOptions();
+          syncUIControls();
+          renderLayout();
+          showToast(`Preset "${removed.name}" telah dihapus`);
+        }
+      });
+
+      document.getElementById('frame-corner-radius').addEventListener('input', e => {
+        STATE.frame.cornerRadius = parseFloat(e.target.value);
+        document.getElementById('radius-val-label').textContent = `${STATE.frame.cornerRadius} mm`;
+        renderLayout();
+      });
+
+      document.querySelectorAll('.color-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          document.querySelectorAll('.color-chip').forEach(c => c.classList.remove('border-rose-500', 'border-2'));
+          chip.classList.add('border-rose-500', 'border-2');
+          STATE.frame.color = chip.dataset.frameColor;
+          document.getElementById('frame-color-custom').value = STATE.frame.color;
+          renderLayout();
+        });
+      });
+
+      document.getElementById('frame-color-custom').addEventListener('input', e => {
+        STATE.frame.color = e.target.value;
+        renderLayout();
+      });
+
+      document.getElementById('grid-gap').addEventListener('input', e => {
+        STATE.grid.gap = parseFloat(e.target.value);
+        document.getElementById('gap-val-label').textContent = `${STATE.grid.gap} mm`;
+        renderLayout();
+      });
+
+      const cropMarkSelect = document.getElementById('crop-mark-type');
+      const cropControls = document.getElementById('crop-mark-controls');
+      cropMarkSelect.addEventListener('change', e => {
+        STATE.grid.cropMarks = e.target.value;
+        if (cropControls) {
+          cropControls.style.display = e.target.value === 'none' ? 'none' : 'block';
+        }
+        renderLayout();
+      });
+
+      document.getElementById('crop-mark-color').addEventListener('input', e => {
+        STATE.grid.cropColor = e.target.value;
+        document.getElementById('crop-color-val-label').textContent = e.target.value;
+        renderLayout();
+      });
+
+      document.getElementById('crop-mark-opacity').addEventListener('input', e => {
+        const val = parseInt(e.target.value, 10);
+        STATE.grid.cropOpacity = val / 100;
+        document.getElementById('crop-opacity-val-label').textContent = `${val}%`;
+        renderLayout();
+      });
+
+      document.getElementById('crop-mark-width').addEventListener('change', e => {
+        STATE.grid.cropWidth = parseFloat(e.target.value) || 0.08;
+        renderLayout();
+      });
+
+      document.getElementById('font-family-select').addEventListener('change', e => {
+        STATE.typography.fontFamily = e.target.value;
+        renderLayout();
+      });
+
+      document.getElementById('font-size-select').addEventListener('change', e => {
+        STATE.typography.fontSize = e.target.value;
+        renderLayout();
+      });
+
+      document.getElementById('font-color-picker').addEventListener('input', e => {
+        STATE.typography.color = e.target.value;
+        renderLayout();
+      });
+
+      document.getElementById('btn-apply-batch-text').addEventListener('click', () => {
+        const text = document.getElementById('batch-caption-input').value.trim();
+        if (!text) {
+          showToast('Masukkan teks terlebih dahulu', 'error');
+          return;
+        }
+        STATE.photos.forEach(p => p.caption = text);
+        renderPhotosSidebar();
+        renderLayout();
+        showToast('Teks diterapkan ke semua foto');
+      });
+
+      document.getElementById('btn-apply-batch-date').addEventListener('click', () => {
+        const d = new Date();
+        const months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+        const dateStr = `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+        STATE.photos.forEach(p => p.date = dateStr);
+        renderPhotosSidebar();
+        renderLayout();
+        showToast('Tanggal hari ini diterapkan');
+      });
+
+      document.getElementById('btn-reset-paper').addEventListener('click', () => {
+        STATE.paper = JSON.parse(JSON.stringify(FACTORY_DEFAULTS.paper));
+        syncUIControls();
+        applyZoom(0);
+        renderLayout();
+        showToast('Pengaturan kertas direset');
+      });
+
+      document.getElementById('btn-reset-frame').addEventListener('click', () => {
+        STATE.frame = JSON.parse(JSON.stringify(FACTORY_DEFAULTS.frame));
+        STATE.grid = JSON.parse(JSON.stringify(FACTORY_DEFAULTS.grid));
+        syncUIControls();
+        renderLayout();
+        showToast('Pengaturan Polaroid & Cross direset');
+      });
+
+      document.getElementById('btn-reset-text').addEventListener('click', () => {
+        STATE.typography = JSON.parse(JSON.stringify(FACTORY_DEFAULTS.typography));
+        document.getElementById('batch-caption-input').value = '';
+        syncUIControls();
+        renderLayout();
+        showToast('Pengaturan teks direset');
+      });
+
+      document.getElementById('btn-mobile-edit-sheet').addEventListener('click', () => {
+        switchTab('photos');
+      });
+
+      window.addEventListener('keydown', e => {
+        if (e.target && e.target.matches('input, textarea, select')) return;
+        const key = e.key;
+        if (key === '1' || key === '2' || key === '3') {
+          const targetMode = key === '1' ? 'fill' : (key === '2' ? 'fit' : 'stretch');
+          const isSlotModalOpen = !document.getElementById('slot-modal').classList.contains('hidden');
+          if (isSlotModalOpen && STATE.selectedSlotIndex !== null) {
+            setPhotoFitMode(STATE.selectedSlotIndex, targetMode);
+          } else {
+            setAllPhotosFitMode(targetMode);
+          }
+        }
+      });
+    }
+
+    function setupResetModalListeners() {
+      const resetModal = document.getElementById('reset-modal');
+      const btnMobileReset = document.getElementById('btn-mobile-reset-session');
+      const btnDeskReset = document.getElementById('btn-desk-reset-session');
+      const btnCloseReset = document.getElementById('btn-close-reset-modal');
+      const btnCancelReset = document.getElementById('btn-cancel-reset-modal');
+      const btnConfirmReset = document.getElementById('btn-confirm-reset-modal');
+
+      const openResetModal = () => {
+        resetModal.classList.remove('hidden');
+        resetModal.classList.add('flex');
+      };
+
+      const closeResetModal = () => {
+        resetModal.classList.add('hidden');
+        resetModal.classList.remove('flex');
+      };
+
+      if (btnMobileReset) btnMobileReset.addEventListener('click', openResetModal);
+      if (btnDeskReset) btnDeskReset.addEventListener('click', openResetModal);
+      if (btnCloseReset) btnCloseReset.addEventListener('click', closeResetModal);
+      if (btnCancelReset) btnCancelReset.addEventListener('click', closeResetModal);
+
+      resetModal.addEventListener('click', e => {
+        if (e.target === resetModal) closeResetModal();
+      });
+
+      if (btnConfirmReset) {
+        btnConfirmReset.addEventListener('click', () => {
+          STATE.photos.forEach(p => {
+            if (p.src && p.src.startsWith('blob:')) URL.revokeObjectURL(p.src);
+          });
+          STATE.photos = [];
+          STATE.currentPage = 0;
+          STATE.canvasTranslateX = 0;
+          STATE.canvasTranslateY = 0;
+          STATE.selectedSlotIndex = null;
+
+          STATE.paper = JSON.parse(JSON.stringify(FACTORY_DEFAULTS.paper));
+          STATE.frame = JSON.parse(JSON.stringify(FACTORY_DEFAULTS.frame));
+          STATE.typography = JSON.parse(JSON.stringify(FACTORY_DEFAULTS.typography));
+          STATE.grid = JSON.parse(JSON.stringify(FACTORY_DEFAULTS.grid));
+          loadSavedDefaults();
+
+          const batchInput = document.getElementById('batch-caption-input');
+          if (batchInput) batchInput.value = '';
+
+          switchTab('photos');
+          syncUIControls();
+          applyZoom(0);
+          renderPhotosSidebar();
+          renderLayout();
+
+          closeResetModal();
+          showToast('Sesi kerja berhasil direset');
+        });
+      }
+    }
+
+    function setupSettingsAndBackupListeners() {
+      const modal = document.getElementById('settings-modal');
+      const btnOpen = document.getElementById('btn-open-settings-modal');
+      const btnClose = document.getElementById('btn-close-settings-modal');
+      const btnSaveDefault = document.getElementById('btn-save-as-default');
+      const btnResetFactory = document.getElementById('btn-reset-factory');
+      const btnExport = document.getElementById('btn-export-settings');
+      const btnImportTrigger = document.getElementById('btn-import-settings-trigger');
+      const fileInput = document.getElementById('settings-file-input');
+
+      btnOpen.addEventListener('click', () => {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      });
+
+      btnClose.addEventListener('click', () => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      });
+
+      btnSaveDefault.addEventListener('click', () => {
+        const payload = {
+          paper: STATE.paper,
+          frame: STATE.frame,
+          typography: STATE.typography,
+          grid: STATE.grid
+        };
+        try {
+          localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(payload));
+          showToast('Setting saat ini tersimpan sebagai default!');
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+        } catch (_) {
+          showToast('Gagal menyimpan default ke browser', 'error');
+        }
+      });
+
+      btnResetFactory.addEventListener('click', () => {
+        try {
+          localStorage.removeItem(STORAGE_KEY_SETTINGS);
+          localStorage.removeItem(STORAGE_KEY_PRESETS);
+          STATE.paper = JSON.parse(JSON.stringify(FACTORY_DEFAULTS.paper));
+          STATE.frame = JSON.parse(JSON.stringify(FACTORY_DEFAULTS.frame));
+          STATE.typography = JSON.parse(JSON.stringify(FACTORY_DEFAULTS.typography));
+          STATE.grid = JSON.parse(JSON.stringify(FACTORY_DEFAULTS.grid));
+          STATE.userFramePresets = [];
+          populateFramePresetOptions();
+          syncUIControls();
+          applyZoom(0);
+          renderLayout();
+          showToast('Pengaturan dikembalikan ke standar pabrik');
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+        } catch (_) {}
+      });
+
+      btnExport.addEventListener('click', () => {
+        const payload = {
+          version: '2.1',
+          appName: 'Polaroid Studio',
+          timestamp: new Date().toISOString(),
+          settings: {
+            paper: STATE.paper,
+            frame: STATE.frame,
+            typography: STATE.typography,
+            grid: STATE.grid,
+            userFramePresets: STATE.userFramePresets
+          }
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `polaroid-settings-backup-${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast('File backup pengaturan berhasil diunduh');
+      });
+
+      btnImportTrigger.addEventListener('click', () => fileInput.click());
+
+      fileInput.addEventListener('change', e => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          try {
+            const data = JSON.parse(ev.target.result);
+            const s = data.settings || data;
+            if (s.paper) STATE.paper = Object.assign({}, FACTORY_DEFAULTS.paper, s.paper);
+            if (s.frame) STATE.frame = Object.assign({}, FACTORY_DEFAULTS.frame, s.frame);
+            if (s.typography) STATE.typography = Object.assign({}, FACTORY_DEFAULTS.typography, s.typography);
+            if (s.grid) STATE.grid = Object.assign({}, FACTORY_DEFAULTS.grid, s.grid);
+            if (Array.isArray(s.userFramePresets)) {
+              STATE.userFramePresets = s.userFramePresets;
+              try {
+                localStorage.setItem(STORAGE_KEY_PRESETS, JSON.stringify(STATE.userFramePresets));
+              } catch (_) {}
+            }
+
+            populateFramePresetOptions();
+            syncUIControls();
+            applyZoom(0);
+            renderLayout();
+            showToast('Pengaturan berhasil dipulihkan!');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+          } catch (err) {
+            showToast('Format berkas JSON tidak sesuai', 'error');
+          }
+        };
+        reader.readAsText(file);
+        fileInput.value = '';
+      });
+    }
+
+    function updatePrintStyleTag(paperW, paperH) {
+      const styleEl = document.getElementById('dynamic-print-page');
+      styleEl.innerHTML = `@page { size: ${paperW}mm ${paperH}mm; margin: 0; }`;
+    }
+
+    function calculatePreviewScale(paperW, paperH) {
+      const viewport = document.getElementById('preview-viewport');
+      if (!viewport) return 1;
+
+      const padX = window.innerWidth < 768 ? 24 : 48;
+      const padY = window.innerWidth < 768 ? 48 : 64;
+      const availW = Math.max(100, viewport.clientWidth - padX);
+      const availH = Math.max(100, viewport.clientHeight - padY);
+
+      const targetPxW = paperW * PX_PER_MM_SCREEN;
+      const targetPxH = paperH * PX_PER_MM_SCREEN;
+
+      const scaleX = availW / targetPxW;
+      const scaleY = availH / targetPxH;
+      return Math.min(scaleX, scaleY);
+    }
+
+    function applyZoom(delta) {
+      const m = computeGridMetrics();
+      if (delta === 0) {
+        STATE.zoomLevel = calculatePreviewScale(m.paperW, m.paperH);
+        STATE.canvasTranslateX = 0;
+        STATE.canvasTranslateY = 0;
+      } else {
+        STATE.zoomLevel = Math.max(0.1, Math.min(4, STATE.zoomLevel + delta));
+      }
+      document.getElementById('zoom-level-text').textContent = Math.round(STATE.zoomLevel * 100) + '%';
+
+      const workspace = document.getElementById('print-workspace');
+      const paperEl = document.getElementById('paper-element');
+      const paperPxW = m.paperW * PX_PER_MM_SCREEN;
+      const paperPxH = m.paperH * PX_PER_MM_SCREEN;
+
+      if (workspace && paperEl) {
+        workspace.style.width = `${Math.round(paperPxW * STATE.zoomLevel)}px`;
+        workspace.style.height = `${Math.round(paperPxH * STATE.zoomLevel)}px`;
+        paperEl.style.transform = `scale(${STATE.zoomLevel})`;
+        workspace.style.transform = `translate3d(${STATE.canvasTranslateX}px, ${STATE.canvasTranslateY}px, 0)`;
+      }
+    }
+
+    function renderLayout() {
+      const metrics = computeGridMetrics();
+      updatePrintStyleTag(metrics.paperW, metrics.paperH);
+
+      document.getElementById('stat-info').textContent = `${STATE.photos.length} foto • ${metrics.totalCards} polaroid • ${metrics.totalPages} lembar`;
+      document.getElementById('calc-capacity').textContent = `${metrics.capacity} polaroid / lembar`;
+      document.getElementById('calc-grid-dim').textContent = `${metrics.cols} kol x ${metrics.rows} baris`;
+      document.getElementById('calc-total-pages').textContent = `${metrics.totalPages} Lembar`;
+      document.getElementById('page-indicator').textContent = `Lembar ${STATE.currentPage + 1} dari ${metrics.totalPages}`;
+
+      document.getElementById('btn-prev-page').disabled = STATE.currentPage <= 0;
+      document.getElementById('btn-next-page').disabled = STATE.currentPage >= metrics.totalPages - 1;
+
+      const workspace = document.getElementById('print-workspace');
+      const paperEl = document.getElementById('paper-element');
+      const paperPxW = metrics.paperW * PX_PER_MM_SCREEN;
+      const paperPxH = metrics.paperH * PX_PER_MM_SCREEN;
+
+      paperEl.style.width = `${metrics.paperW}mm`;
+      paperEl.style.height = `${metrics.paperH}mm`;
+      paperEl.innerHTML = '';
+
+      workspace.style.width = `${Math.round(paperPxW * STATE.zoomLevel)}px`;
+      workspace.style.height = `${Math.round(paperPxH * STATE.zoomLevel)}px`;
+      paperEl.style.transform = `scale(${STATE.zoomLevel})`;
+      workspace.style.transform = `translate3d(${STATE.canvasTranslateX}px, ${STATE.canvasTranslateY}px, 0)`;
+      document.getElementById('zoom-level-text').textContent = Math.round(STATE.zoomLevel * 100) + '%';
+
+      const pageStartCard = STATE.currentPage * metrics.capacity;
+      const frag = document.createDocumentFragment();
+
+      for (let r = 0; r < metrics.rows; r++) {
+        for (let c = 0; c < metrics.cols; c++) {
+          const slotInPage = (r * metrics.cols) + c;
+          const globalCardIdx = pageStartCard + slotInPage;
+
+          if (globalCardIdx >= metrics.totalCards) continue;
+
+          const posX = metrics.offsetX + (c * (metrics.cardW + metrics.gap));
+          const posY = metrics.offsetY + (r * (metrics.cardH + metrics.gap));
+
+          const cardElement = createPolaroidCardElement(globalCardIdx, globalCardIdx, posX, posY, metrics);
+          frag.appendChild(cardElement);
+        }
+      }
+
+      paperEl.appendChild(frag);
+
+      const cropSegments = computeDeduplicatedCropSegments(metrics);
+      if (STATE.grid.cropMarks !== 'none' && cropSegments.length > 0) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'absolute inset-0 pointer-events-none');
+        svg.setAttribute('width', '100%');
+        svg.setAttribute('height', '100%');
+        svg.setAttribute('viewBox', `0 0 ${metrics.paperW} ${metrics.paperH}`);
+        svg.style.zIndex = '10';
+
+        const strokeColor = hexToRgba(STATE.grid.cropColor, STATE.grid.cropOpacity);
+        let pathData = '';
+        cropSegments.forEach(s => {
+          pathData += `M ${s.x1} ${s.y1} L ${s.x2} ${s.y2} `;
+        });
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', pathData);
+        path.setAttribute('stroke', strokeColor);
+        path.setAttribute('stroke-width', STATE.grid.cropWidth);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke-linecap', 'butt');
+        if (STATE.grid.cropMarks === 'dashed') {
+          path.setAttribute('stroke-dasharray', '1.5 1.5');
+        }
+        path.setAttribute('shape-rendering', 'crispEdges');
+        svg.appendChild(path);
+        paperEl.appendChild(svg);
+      }
+    }
+
+    let hasCanvasDragged = false;
+
+    function createPolaroidCardElement(globalCardIdx, uniqueCardIdx, x, y, metrics) {
+      const card = document.createElement('div');
+      card.className = 'absolute select-none overflow-hidden';
+      card.style.left = `${x}mm`;
+      card.style.top = `${y}mm`;
+      card.style.width = `${metrics.cardW}mm`;
+      card.style.height = `${metrics.cardH}mm`;
+      card.style.backgroundColor = STATE.frame.color;
+      card.style.borderRadius = `${STATE.frame.cornerRadius}mm`;
+      card.style.boxSizing = 'border-box';
+
+      const padTop = STATE.frame.padTop;
+      const padSide = STATE.frame.padSide;
+      const padBottom = STATE.frame.padBottom;
+      const count = metrics.photosPerCard;
+      const photoGap = STATE.frame.photoGap !== undefined ? STATE.frame.photoGap : 3;
+
+      const availW = metrics.cardW - (2 * padSide);
+      const availH = metrics.cardH - padTop - padBottom - ((count - 1) * photoGap);
+      const slotH = Math.max(5, availH / count);
+
+      const cardPhotoBaseIdx = uniqueCardIdx * count;
+      let firstPhoto = null;
+
+      for (let k = 0; k < count; k++) {
+        const photoIdx = cardPhotoBaseIdx + k;
+        const photo = STATE.photos[photoIdx] || null;
+        if (!firstPhoto && photo) firstPhoto = photo;
+
+        const slotY = padTop + (k * (slotH + photoGap));
+
+        const photoBox = document.createElement('div');
+        photoBox.className = 'absolute overflow-hidden bg-slate-300 flex items-center justify-center cursor-pointer hover:opacity-95 active:opacity-80 transition';
+        photoBox.style.left = `${padSide}mm`;
+        photoBox.style.top = `${slotY}mm`;
+        photoBox.style.width = `${availW}mm`;
+        photoBox.style.height = `${slotH}mm`;
+        photoBox.style.borderRadius = '0.5mm';
+        photoBox.dataset.photoIdx = photoIdx;
+
+        if (photo) {
+          const img = document.createElement('img');
+          img.src = photo.src;
+          img.className = 'w-full h-full pointer-events-none origin-center';
+          img.style.objectPosition = 'center';
+          const mode = photo.fitMode || 'fit';
+          if (mode === 'stretch') {
+            img.style.objectFit = 'fill';
+          } else if (mode === 'fill') {
+            img.style.objectFit = 'cover';
+          } else {
+            img.style.objectFit = 'contain';
+          }
+          img.style.transform = `scale(${photo.zoom || 1}) translate(${photo.panX || 0}px, ${photo.panY || 0}px) rotate(${photo.rotate || 0}deg) ${photo.flipH ? 'scaleX(-1)' : ''}`;
+          photoBox.appendChild(img);
+        } else {
+          photoBox.innerHTML = `
+            <div class="flex flex-col items-center justify-center text-slate-500 p-0.5 pointer-events-none">
+              <svg class="w-4 h-4 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <span class="text-[8px] font-sans font-medium opacity-70">${count > 1 ? '#' + (k + 1) : 'Foto'}</span>
+            </div>
+          `;
+        }
+
+        photoBox.addEventListener('click', e => {
+          e.stopPropagation();
+          if (hasCanvasDragged) return;
+          if (photo) {
+            openSlotEditor(photoIdx);
+          } else {
+            document.getElementById('file-input').click();
+          }
+        });
+
+        card.appendChild(photoBox);
+      }
+
+      const textBox = document.createElement('div');
+      textBox.className = 'absolute flex flex-col items-center justify-center text-center overflow-hidden px-1 pointer-events-none';
+      textBox.style.bottom = '0mm';
+      textBox.style.left = `${padSide}mm`;
+      textBox.style.right = `${padSide}mm`;
+      textBox.style.height = `${padBottom}mm`;
+
+      const captionText = (firstPhoto && firstPhoto.caption) || '';
+      const dateText = (firstPhoto && firstPhoto.date) || '';
+
+      if (captionText || dateText) {
+        if (captionText) {
+          const cap = document.createElement('span');
+          cap.className = `truncate w-full leading-tight ${STATE.typography.fontFamily}`;
+          cap.style.fontSize = `${STATE.typography.fontSize}pt`;
+          cap.style.color = STATE.typography.color;
+          cap.textContent = captionText;
+          textBox.appendChild(cap);
+        }
+        if (dateText) {
+          const dt = document.createElement('span');
+          dt.className = 'truncate w-full text-[8pt] text-slate-500 font-sans leading-none mt-0.5';
+          dt.textContent = dateText;
+          textBox.appendChild(dt);
+        }
+      }
+
+      card.appendChild(textBox);
+      return card;
+    }
+
+    let isPanningCanvas = false;
+    let panCanvasStartX = 0;
+    let panCanvasStartY = 0;
+    let initialCanvasX = 0;
+    let initialCanvasY = 0;
+    let canvasPanRaf = null;
+
+    function setupCanvasPanControls() {
+      const viewport = document.getElementById('preview-viewport');
+      const workspace = document.getElementById('print-workspace');
+
+      viewport.addEventListener('wheel', e => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.08 : -0.08;
+        applyZoom(delta);
+      }, { passive: false });
+
+      viewport.addEventListener('click', e => {
+        if (hasCanvasDragged) return;
+        const box = e.target.closest('[data-photo-idx]');
+        if (box) {
+          const pIdx = parseInt(box.dataset.photoIdx, 10);
+          if (!isNaN(pIdx)) {
+            if (STATE.photos[pIdx]) {
+              openSlotEditor(pIdx);
+            } else {
+              document.getElementById('file-input').click();
+            }
+          }
+        }
+      });
+
+      const activePointers = new Map();
+      let pinchStartDist = 0;
+      let pinchStartZoom = 1;
+
+      viewport.addEventListener('pointerdown', e => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (e.target.closest('#page-floating-nav')) return;
+
+        activePointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+
+        if (activePointers.size === 1) {
+          isPanningCanvas = true;
+          hasCanvasDragged = false;
+          panCanvasStartX = e.clientX;
+          panCanvasStartY = e.clientY;
+          initialCanvasX = STATE.canvasTranslateX;
+          initialCanvasY = STATE.canvasTranslateY;
+          workspace.style.transition = 'none';
+        } else if (activePointers.size === 2) {
+          isPanningCanvas = false;
+          hasCanvasDragged = true;
+          const pts = Array.from(activePointers.values());
+          pinchStartDist = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
+          pinchStartZoom = STATE.zoomLevel;
+        }
+      });
+
+      viewport.addEventListener('pointermove', e => {
+        if (!activePointers.has(e.pointerId)) return;
+        activePointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+
+        if (activePointers.size === 2) {
+          const pts = Array.from(activePointers.values());
+          const currentDist = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
+          if (pinchStartDist > 0) {
+            const factor = currentDist / pinchStartDist;
+            const newZoom = Math.max(0.1, Math.min(4, pinchStartZoom * factor));
+            STATE.zoomLevel = newZoom;
+            const m = computeGridMetrics();
+            const paperPxW = m.paperW * PX_PER_MM_SCREEN;
+            const paperPxH = m.paperH * PX_PER_MM_SCREEN;
+            const paperEl = document.getElementById('paper-element');
+            workspace.style.width = `${Math.round(paperPxW * STATE.zoomLevel)}px`;
+            workspace.style.height = `${Math.round(paperPxH * STATE.zoomLevel)}px`;
+            paperEl.style.transform = `scale(${STATE.zoomLevel})`;
+            document.getElementById('zoom-level-text').textContent = Math.round(STATE.zoomLevel * 100) + '%';
+          }
+          return;
+        }
+
+        if (isPanningCanvas && activePointers.size === 1) {
+          const dx = e.clientX - panCanvasStartX;
+          const dy = e.clientY - panCanvasStartY;
+
+          if (!hasCanvasDragged && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+            hasCanvasDragged = true;
+            viewport.style.cursor = 'grabbing';
+            try {
+              viewport.setPointerCapture(e.pointerId);
+            } catch (_) {}
+          }
+
+          if (hasCanvasDragged) {
+            STATE.canvasTranslateX = initialCanvasX + dx;
+            STATE.canvasTranslateY = initialCanvasY + dy;
+
+            if (!canvasPanRaf) {
+              canvasPanRaf = requestAnimationFrame(() => {
+                workspace.style.transform = `translate3d(${STATE.canvasTranslateX}px, ${STATE.canvasTranslateY}px, 0)`;
+                canvasPanRaf = null;
+              });
+            }
+          }
+        }
+      });
+
+      const finishPointer = e => {
+        activePointers.delete(e.pointerId);
+        try {
+          viewport.releasePointerCapture(e.pointerId);
+        } catch (_) {}
+
+        if (activePointers.size === 0) {
+          isPanningCanvas = false;
+          pinchStartDist = 0;
+          viewport.style.cursor = 'grab';
+          workspace.style.transition = 'transform 0.1s ease-out';
+          if (hasCanvasDragged) {
+            setTimeout(() => {
+              hasCanvasDragged = false;
+            }, 60);
+          }
+        } else if (activePointers.size === 1) {
+          const pt = Array.from(activePointers.values())[0];
+          panCanvasStartX = pt.clientX;
+          panCanvasStartY = pt.clientY;
+          initialCanvasX = STATE.canvasTranslateX;
+          initialCanvasY = STATE.canvasTranslateY;
+          isPanningCanvas = true;
+        }
+      };
+
+      viewport.addEventListener('pointerup', finishPointer);
+      viewport.addEventListener('pointercancel', finishPointer);
+    }
+
+    let isPanning = false;
+    let startPanX = 0;
+    let startPanY = 0;
+    let initialPhotoPanX = 0;
+    let initialPhotoPanY = 0;
+
+    function openSlotEditor(index) {
+      if (!STATE.photos[index]) return;
+      STATE.selectedSlotIndex = index;
+      const photo = STATE.photos[index];
+
+      const modalFrame = document.getElementById('modal-frame-preview');
+      const photoWindow = document.getElementById('modal-photo-window');
+      const textArea = document.getElementById('modal-frame-text-area');
+
+      const cardW = STATE.frame.width;
+      const cardH = STATE.frame.height;
+      const padTop = STATE.frame.padTop;
+      const padSide = STATE.frame.padSide;
+      const padBottom = STATE.frame.padBottom;
+      const count = STATE.frame.photosPerCard || 1;
+      const photoGap = STATE.frame.photoGap !== undefined ? STATE.frame.photoGap : 3;
+
+      const availW = cardW - (2 * padSide);
+      const availH = cardH - padTop - padBottom - ((count - 1) * photoGap);
+      const slotH = Math.max(5, availH / count);
+
+      const maxW = 230;
+      const maxH = 270;
+      const aspect = cardW / cardH;
+      let targetW, targetH;
+
+      if (aspect > maxW / maxH) {
+        targetW = maxW;
+        targetH = maxW / aspect;
+      } else {
+        targetH = maxH;
+        targetW = maxH * aspect;
+      }
+
+      const scaleMM = targetW / cardW;
+
+      modalFrame.style.width = `${Math.round(targetW)}px`;
+      modalFrame.style.height = `${Math.round(targetH)}px`;
+      modalFrame.style.backgroundColor = STATE.frame.color;
+      modalFrame.style.borderRadius = `${Math.max(2, Math.round(STATE.frame.cornerRadius * scaleMM))}px`;
+
+      const slotInCard = index % count;
+      const slotY = padTop + (slotInCard * (slotH + photoGap));
+
+      photoWindow.style.left = `${Math.round(padSide * scaleMM)}px`;
+      photoWindow.style.top = `${Math.round(slotY * scaleMM)}px`;
+      photoWindow.style.width = `${Math.round(availW * scaleMM)}px`;
+      photoWindow.style.height = `${Math.round(slotH * scaleMM)}px`;
+      photoWindow.style.borderRadius = '2px';
+
+      textArea.style.display = 'flex';
+      textArea.style.left = `${Math.round(padSide * scaleMM)}px`;
+      textArea.style.right = `${Math.round(padSide * scaleMM)}px`;
+      textArea.style.bottom = '0px';
+      textArea.style.height = `${Math.round(padBottom * scaleMM)}px`;
+
+      document.getElementById('modal-slot-index').textContent = `#${index + 1} (${photo.name})`;
+      document.getElementById('modal-photo-img').src = photo.src;
+      document.getElementById('modal-zoom-slider').value = photo.zoom || 1;
+      document.getElementById('modal-zoom-label').textContent = `${(photo.zoom || 1).toFixed(1)}x`;
+      document.getElementById('modal-caption-input').value = photo.caption || '';
+      document.getElementById('modal-date-input').value = photo.date || '';
+
+      updateModalFitButtons(photo.fitMode || 'fit');
+      updateModalPreviewTransforms();
+      document.getElementById('slot-modal').classList.remove('hidden');
+      document.getElementById('slot-modal').classList.add('flex');
+    }
+
+    function updateModalPreviewTransforms() {
+      const idx = STATE.selectedSlotIndex;
+      if (idx === null || !STATE.photos[idx]) return;
+      const photo = STATE.photos[idx];
+      const img = document.getElementById('modal-photo-img');
+
+      const mode = photo.fitMode || 'fit';
+      if (mode === 'stretch') {
+        img.style.objectFit = 'fill';
+      } else if (mode === 'fill') {
+        img.style.objectFit = 'cover';
+      } else {
+        img.style.objectFit = 'contain';
+      }
+
+      img.style.transform = `scale(${photo.zoom || 1}) translate(${photo.panX || 0}px, ${photo.panY || 0}px) rotate(${photo.rotate || 0}deg) ${photo.flipH ? 'scaleX(-1)' : ''}`;
+
+      const textPrev = document.getElementById('modal-text-preview');
+      const datePrev = document.getElementById('modal-date-preview');
+      textPrev.className = `text-xs text-slate-900 truncate w-full ${STATE.typography.fontFamily}`;
+      textPrev.style.color = STATE.typography.color;
+      textPrev.textContent = photo.caption || '';
+      datePrev.textContent = photo.date || '';
+    }
+
+    function setupSlotEditorListeners() {
+      const modal = document.getElementById('slot-modal');
+      const photoWindow = document.getElementById('modal-photo-window');
+
+      document.getElementById('btn-close-modal').addEventListener('click', () => modal.classList.add('hidden'));
+      document.getElementById('btn-modal-save').addEventListener('click', () => {
+        modal.classList.add('hidden');
+        renderPhotosSidebar();
+        renderLayout();
+      });
+
+      document.getElementById('btn-modal-mode-fill').addEventListener('click', () => {
+        setPhotoFitMode(STATE.selectedSlotIndex, 'fill');
+      });
+      document.getElementById('btn-modal-mode-fit').addEventListener('click', () => {
+        setPhotoFitMode(STATE.selectedSlotIndex, 'fit');
+      });
+      document.getElementById('btn-modal-mode-stretch').addEventListener('click', () => {
+        setPhotoFitMode(STATE.selectedSlotIndex, 'stretch');
+      });
+
+      document.getElementById('modal-zoom-slider').addEventListener('input', e => {
+        const idx = STATE.selectedSlotIndex;
+        if (idx === null || !STATE.photos[idx]) return;
+        const val = parseFloat(e.target.value);
+        STATE.photos[idx].zoom = val;
+        document.getElementById('modal-zoom-label').textContent = `${val.toFixed(1)}x`;
+        updateModalPreviewTransforms();
+      });
+
+      document.getElementById('btn-modal-rotate').addEventListener('click', () => {
+        const idx = STATE.selectedSlotIndex;
+        if (idx === null || !STATE.photos[idx]) return;
+        STATE.photos[idx].rotate = ((STATE.photos[idx].rotate || 0) + 90) % 360;
+        updateModalPreviewTransforms();
+      });
+
+      document.getElementById('btn-modal-flip').addEventListener('click', () => {
+        const idx = STATE.selectedSlotIndex;
+        if (idx === null || !STATE.photos[idx]) return;
+        STATE.photos[idx].flipH = !STATE.photos[idx].flipH;
+        updateModalPreviewTransforms();
+      });
+
+      document.getElementById('btn-modal-reset').addEventListener('click', () => {
+        const idx = STATE.selectedSlotIndex;
+        if (idx === null || !STATE.photos[idx]) return;
+        STATE.photos[idx].zoom = 1;
+        STATE.photos[idx].panX = 0;
+        STATE.photos[idx].panY = 0;
+        STATE.photos[idx].rotate = 0;
+        STATE.photos[idx].flipH = false;
+        STATE.photos[idx].fitMode = 'fit';
+        document.getElementById('modal-zoom-slider').value = 1;
+        document.getElementById('modal-zoom-label').textContent = '1.0x';
+        updateModalFitButtons('fit');
+        updateModalPreviewTransforms();
+      });
+
+      document.getElementById('modal-caption-input').addEventListener('input', e => {
+        const idx = STATE.selectedSlotIndex;
+        if (idx === null || !STATE.photos[idx]) return;
+        STATE.photos[idx].caption = e.target.value;
+        updateModalPreviewTransforms();
+      });
+
+      document.getElementById('modal-date-input').addEventListener('input', e => {
+        const idx = STATE.selectedSlotIndex;
+        if (idx === null || !STATE.photos[idx]) return;
+        STATE.photos[idx].date = e.target.value;
+        updateModalPreviewTransforms();
+      });
+
+      document.getElementById('btn-modal-delete-photo').addEventListener('click', () => {
+        const idx = STATE.selectedSlotIndex;
+        if (idx === null) return;
+        modal.classList.add('hidden');
+        deletePhoto(idx);
+      });
+
+      photoWindow.addEventListener('pointerdown', e => {
+        const idx = STATE.selectedSlotIndex;
+        if (idx === null || !STATE.photos[idx]) return;
+        isPanning = true;
+        startPanX = e.clientX;
+        startPanY = e.clientY;
+        initialPhotoPanX = STATE.photos[idx].panX || 0;
+        initialPhotoPanY = STATE.photos[idx].panY || 0;
+        photoWindow.setPointerCapture(e.pointerId);
+      });
+
+      photoWindow.addEventListener('pointermove', e => {
+        if (!isPanning) return;
+        const idx = STATE.selectedSlotIndex;
+        if (idx === null || !STATE.photos[idx]) return;
+        const dx = e.clientX - startPanX;
+        const dy = e.clientY - startPanY;
+        STATE.photos[idx].panX = initialPhotoPanX + dx;
+        STATE.photos[idx].panY = initialPhotoPanY + dy;
+        updateModalPreviewTransforms();
+      });
+
+      ['pointerup', 'pointercancel'].forEach(evt => {
+        photoWindow.addEventListener(evt, e => {
+          if (isPanning) {
+            isPanning = false;
+            try { photoWindow.releasePointerCapture(e.pointerId); } catch (_) {}
+          }
+        });
+      });
+    }
+
+    async function renderPageToCanvas(pageIndex, dpi = 300) {
+      const metrics = computeGridMetrics();
+      const mmToPx = dpi / 25.4;
+      const canvasW = Math.round(metrics.paperW * mmToPx);
+      const canvasH = Math.round(metrics.paperH * mmToPx);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasW;
+      canvas.height = canvasH;
+      const ctx = canvas.getContext('2d', { alpha: false });
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvasW, canvasH);
+
+      const pageStartCard = pageIndex * metrics.capacity;
+      const padTop = STATE.frame.padTop;
+      const padSide = STATE.frame.padSide;
+      const padBottom = STATE.frame.padBottom;
+      const count = metrics.photosPerCard;
+      const photoGap = STATE.frame.photoGap !== undefined ? STATE.frame.photoGap : 3;
+
+      const availW = metrics.cardW - (2 * padSide);
+      const availH = metrics.cardH - padTop - padBottom - ((count - 1) * photoGap);
+      const slotH = Math.max(5, availH / count);
+
+      for (let r = 0; r < metrics.rows; r++) {
+        for (let c = 0; c < metrics.cols; c++) {
+          const slotInPage = (r * metrics.cols) + c;
+          const globalCardIdx = pageStartCard + slotInPage;
+
+          if (globalCardIdx >= metrics.totalCards) continue;
+
+          const cardPhotoBaseIdx = globalCardIdx * count;
+
+          const cardX = (metrics.offsetX + (c * (metrics.cardW + metrics.gap))) * mmToPx;
+          const cardY = (metrics.offsetY + (r * (metrics.cardH + metrics.gap))) * mmToPx;
+          const cardW = metrics.cardW * mmToPx;
+          const cardH = metrics.cardH * mmToPx;
+          const radius = STATE.frame.cornerRadius * mmToPx;
+
+          ctx.save();
+          ctx.fillStyle = STATE.frame.color;
+          if (ctx.roundRect && radius > 0) {
+            ctx.beginPath();
+            ctx.roundRect(cardX, cardY, cardW, cardH, radius);
+            ctx.fill();
+          } else {
+            ctx.fillRect(cardX, cardY, cardW, cardH);
+          }
+
+          let firstPhoto = null;
+
+          for (let k = 0; k < count; k++) {
+            const photoIdx = cardPhotoBaseIdx + k;
+            const photo = STATE.photos[photoIdx];
+            if (!photo) continue;
+            if (!firstPhoto) firstPhoto = photo;
+
+            const slotX = cardX + (padSide * mmToPx);
+            const slotY = cardY + ((padTop + (k * (slotH + photoGap))) * mmToPx);
+            const slotW = availW * mmToPx;
+            const slotHeightPx = slotH * mmToPx;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(slotX, slotY, slotW, slotHeightPx);
+            ctx.clip();
+
+            await drawImageTransformed(ctx, photo, slotX, slotY, slotW, slotHeightPx);
+            ctx.restore();
+          }
+
+          const captionText = (firstPhoto && firstPhoto.caption) || '';
+          const dateText = (firstPhoto && firstPhoto.date) || '';
+
+          if (captionText || dateText) {
+            const textY = cardY + cardH - ((padBottom / 2) * mmToPx);
+            ctx.fillStyle = STATE.typography.color;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            let fontFam = 'sans-serif';
+            if (STATE.typography.fontFamily === 'font-handwriting') fontFam = '"Caveat", cursive';
+            if (STATE.typography.fontFamily === 'font-serif') fontFam = '"Playfair Display", serif';
+            if (STATE.typography.fontFamily === 'font-mono') fontFam = '"JetBrains Mono", monospace';
+
+            const fontSizePx = (parseInt(STATE.typography.fontSize, 10) * 1.33) * (dpi / 96);
+
+            if (captionText) {
+              ctx.font = `600 ${fontSizePx}px ${fontFam}`;
+              ctx.fillText(captionText, cardX + (cardW / 2), textY - (dateText ? fontSizePx * 0.35 : 0));
+            }
+            if (dateText) {
+              ctx.fillStyle = '#64748b';
+              ctx.font = `400 ${fontSizePx * 0.65}px sans-serif`;
+              ctx.fillText(dateText, cardX + (cardW / 2), textY + (captionText ? fontSizePx * 0.6 : 0));
+            }
+          }
+
+          ctx.restore();
+        }
+      }
+
+      const cropSegments = computeDeduplicatedCropSegments(metrics);
+      if (STATE.grid.cropMarks !== 'none' && cropSegments.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = hexToRgba(STATE.grid.cropColor, STATE.grid.cropOpacity);
+        ctx.lineWidth = Math.max(0.5, STATE.grid.cropWidth * mmToPx);
+        if (STATE.grid.cropMarks === 'dashed') {
+          ctx.setLineDash([1.5 * mmToPx, 1.5 * mmToPx]);
+        }
+        ctx.beginPath();
+        cropSegments.forEach(s => {
+          ctx.moveTo(s.x1 * mmToPx, s.y1 * mmToPx);
+          ctx.lineTo(s.x2 * mmToPx, s.y2 * mmToPx);
+        });
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+
+      return canvas;
+    }
+
+    function drawImageTransformed(ctx, photo, x, y, w, h) {
+      return new Promise(resolve => {
+        let sourceUrl = '';
+        let shouldRevoke = false;
+
+        if (photo.file) {
+          sourceUrl = URL.createObjectURL(photo.file);
+          shouldRevoke = true;
+        } else {
+          sourceUrl = photo.originalSrc || photo.src;
+        }
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          ctx.save();
+          const cx = x + (w / 2);
+          const cy = y + (h / 2);
+
+          ctx.translate(cx, cy);
+          if (photo.rotate) ctx.rotate((photo.rotate * Math.PI) / 180);
+          if (photo.flipH) ctx.scale(-1, 1);
+
+          const scale = photo.zoom || 1;
+          ctx.scale(scale, scale);
+
+          const panScaleRatio = (w / 200);
+          ctx.translate((photo.panX || 0) * panScaleRatio, (photo.panY || 0) * panScaleRatio);
+
+          const mode = photo.fitMode || 'fit';
+          const imgRatio = img.width / img.height;
+          const boxRatio = w / h;
+          let dw, dh;
+
+          if (mode === 'stretch') {
+            dw = w;
+            dh = h;
+          } else if (mode === 'fit') {
+            if (imgRatio > boxRatio) {
+              dw = w;
+              dh = w / imgRatio;
+            } else {
+              dh = h;
+              dw = h * imgRatio;
+            }
+          } else {
+            if (imgRatio > boxRatio) {
+              dh = h;
+              dw = h * imgRatio;
+            } else {
+              dw = w;
+              dh = w / imgRatio;
+            }
+          }
+
+          ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+          ctx.restore();
+          if (shouldRevoke) URL.revokeObjectURL(sourceUrl);
+          resolve();
+        };
+        img.onerror = () => {
+          if (shouldRevoke) URL.revokeObjectURL(sourceUrl);
+          resolve();
+        };
+        img.src = sourceUrl;
+      });
+    }
+
+    async function downloadAllPagesAsPdf() {
+      if (!STATE.photos.length) {
+        showToast('Silakan unggah foto terlebih dahulu', 'error');
+        return;
+      }
+
+      const btn = document.getElementById('btn-download-pdf');
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.classList.add('opacity-70', 'cursor-not-allowed');
+
+      try {
+        const { jsPDF } = window.jspdf || {};
+        if (!jsPDF) {
+          throw new Error('Modul jsPDF belum siap');
+        }
+
+        const metrics = computeGridMetrics();
+        const isLandscape = STATE.paper.orientation === 'landscape';
+        const pdf = new jsPDF({
+          orientation: isLandscape ? 'landscape' : 'portrait',
+          unit: 'mm',
+          format: [metrics.paperW, metrics.paperH],
+          compress: true
+        });
+
+        for (let i = 0; i < metrics.totalPages; i++) {
+          showToast(`Merender PDF lembar ${i + 1} dari ${metrics.totalPages}...`);
+          if (i > 0) {
+            pdf.addPage([metrics.paperW, metrics.paperH], isLandscape ? 'landscape' : 'portrait');
+          }
+          const canvas = await renderPageToCanvas(i, 300);
+          const imgData = canvas.toDataURL('image/jpeg', 0.95);
+          pdf.addImage(imgData, 'JPEG', 0, 0, metrics.paperW, metrics.paperH, undefined, 'FAST');
+          await new Promise(r => setTimeout(r, 40));
+        }
+
+        pdf.save(`Polaroid_Layout_${Date.now()}.pdf`);
+        showToast(`PDF (${metrics.totalPages} halaman) berhasil diunduh!`);
+      } catch (err) {
+        showToast('Gagal membuat PDF: ' + (err.message || 'Kesalahan sistem'), 'error');
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('opacity-70', 'cursor-not-allowed');
+        btn.innerHTML = originalHtml;
+      }
+    }
+
+    function setupExportAndPrintListeners() {
+      const exportModal = document.getElementById('export-modal');
+      const btnOpenExport = document.getElementById('btn-open-export');
+      const btnCloseExport = document.getElementById('btn-close-export-modal');
+      const btnStartExport = document.getElementById('btn-start-export');
+      const btnDownloadPdf = document.getElementById('btn-download-pdf');
+
+      btnDownloadPdf.addEventListener('click', downloadAllPagesAsPdf);
+
+      btnOpenExport.addEventListener('click', () => {
+        if (!STATE.photos.length) {
+          showToast('Silakan unggah foto terlebih dahulu', 'error');
+          return;
+        }
+        exportModal.classList.remove('hidden');
+        exportModal.classList.add('flex');
+      });
+
+      btnCloseExport.addEventListener('click', () => exportModal.classList.add('hidden'));
+
+      document.querySelectorAll('.export-fmt-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.export-fmt-btn').forEach(b => {
+            b.classList.remove('active', 'bg-rose-600/20', 'border-rose-500', 'text-rose-300');
+            b.classList.add('bg-slate-800', 'border-slate-700', 'text-slate-300');
+          });
+          btn.classList.add('active', 'bg-rose-600/20', 'border-rose-500', 'text-rose-300');
+          btn.classList.remove('bg-slate-800', 'border-slate-700', 'text-slate-300');
+          STATE.exportFormat = btn.dataset.exportFmt;
+        });
+      });
+
+      btnStartExport.addEventListener('click', async () => {
+        const metrics = computeGridMetrics();
+        const mode = document.getElementById('export-page-select').value;
+        const progressBar = document.getElementById('export-progress-bar');
+        const progressFill = document.getElementById('export-progress-fill');
+        const statusText = document.getElementById('export-status-text');
+
+        progressBar.classList.remove('hidden');
+        btnStartExport.disabled = true;
+
+        const pagesToExport = mode === 'current' ? [STATE.currentPage] : Array.from({ length: metrics.totalPages }, (_, i) => i);
+
+        if (STATE.exportFormat === 'pdf') {
+          try {
+            const { jsPDF } = window.jspdf || {};
+            if (!jsPDF) {
+              throw new Error('Modul jsPDF belum siap');
+            }
+            const isLandscape = STATE.paper.orientation === 'landscape';
+            const pdf = new jsPDF({
+              orientation: isLandscape ? 'landscape' : 'portrait',
+              unit: 'mm',
+              format: [metrics.paperW, metrics.paperH],
+              compress: true
+            });
+
+            for (let i = 0; i < pagesToExport.length; i++) {
+              const pIdx = pagesToExport[i];
+              statusText.textContent = `Merender halaman ${pIdx + 1} dari ${pagesToExport.length}...`;
+              progressFill.style.width = `${Math.round(((i + 0.5) / pagesToExport.length) * 100)}%`;
+
+              if (i > 0) {
+                pdf.addPage([metrics.paperW, metrics.paperH], isLandscape ? 'landscape' : 'portrait');
+              }
+
+              const canvas = await renderPageToCanvas(pIdx, 300);
+              const imgData = canvas.toDataURL('image/jpeg', 0.95);
+              pdf.addImage(imgData, 'JPEG', 0, 0, metrics.paperW, metrics.paperH, undefined, 'FAST');
+              progressFill.style.width = `${Math.round(((i + 1) / pagesToExport.length) * 100)}%`;
+              await new Promise(r => setTimeout(r, 40));
+            }
+
+            statusText.textContent = 'Menyimpan berkas PDF...';
+            pdf.save(`Polaroid_Layout_${Date.now()}.pdf`);
+            showToast('Dokumen PDF berhasil diunduh');
+          } catch (err) {
+            showToast('Gagal membuat PDF: ' + (err.message || 'Kesalahan sistem'), 'error');
+          }
+        } else if (pagesToExport.length > 1) {
+          try {
+            const JSZipLib = window.JSZip;
+            if (!JSZipLib) {
+              throw new Error('Modul JSZip belum siap');
+            }
+            const zip = new JSZipLib();
+            const ext = STATE.exportFormat === 'png' ? 'png' : 'jpg';
+
+            for (let i = 0; i < pagesToExport.length; i++) {
+              const pIdx = pagesToExport[i];
+              statusText.textContent = `Merender lembar ${pIdx + 1} dari ${pagesToExport.length}...`;
+              progressFill.style.width = `${Math.round(((i + 0.5) / pagesToExport.length) * 100)}%`;
+
+              const canvas = await renderPageToCanvas(pIdx, 300);
+              const dpiBlob = await canvasToDpiBlob(canvas, STATE.exportFormat, 300);
+              zip.file(`Polaroid_Lembar_${pIdx + 1}.${ext}`, dpiBlob);
+              progressFill.style.width = `${Math.round(((i + 1) / pagesToExport.length) * 100)}%`;
+              await new Promise(r => setTimeout(r, 40));
+            }
+
+            statusText.textContent = 'Mengompres arsip ZIP...';
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            const link = document.createElement('a');
+            link.download = `Polaroid_Semua_Lembar_${Date.now()}.zip`;
+            link.href = URL.createObjectURL(zipBlob);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+            showToast('Arsip ZIP gambar presisi 300 DPI berhasil diunduh');
+          } catch (err) {
+            showToast('Gagal membuat ZIP: ' + (err.message || 'Kesalahan sistem'), 'error');
+          }
+        } else {
+          const pIdx = pagesToExport[0];
+          statusText.textContent = `Merender lembar ${pIdx + 1}...`;
+          progressFill.style.width = '50%';
+          const canvas = await renderPageToCanvas(pIdx, 300);
+          const ext = STATE.exportFormat === 'png' ? 'png' : 'jpg';
+          const dpiBlob = await canvasToDpiBlob(canvas, STATE.exportFormat, 300);
+          const link = document.createElement('a');
+          link.download = `Polaroid_Lembar_${pIdx + 1}.${ext}`;
+          link.href = URL.createObjectURL(dpiBlob);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+          progressFill.style.width = '100%';
+          showToast('Unduhan gambar presisi 300 DPI selesai!');
+        }
+
+        btnStartExport.disabled = false;
+        progressBar.classList.add('hidden');
+        exportModal.classList.add('hidden');
+      });
+    }
+
+    function initializeApp() {
+      loadSavedDefaults();
+      setupUploadHandlers();
+      setupControlListeners();
+      setupResetModalListeners();
+      setupSlotEditorListeners();
+      setupExportAndPrintListeners();
+      setupCanvasPanControls();
+      setupSettingsAndBackupListeners();
+
+      document.getElementById('btn-prev-page').addEventListener('click', () => {
+        if (STATE.currentPage > 0) {
+          STATE.currentPage--;
+          renderLayout();
+        }
+      });
+
+      document.getElementById('btn-next-page').addEventListener('click', () => {
+        const m = computeGridMetrics();
+        if (STATE.currentPage < m.totalPages - 1) {
+          STATE.currentPage++;
+          renderLayout();
+        }
+      });
+
+      document.getElementById('btn-zoom-in').addEventListener('click', () => applyZoom(0.1));
+      document.getElementById('btn-zoom-out').addEventListener('click', () => applyZoom(-0.1));
+      document.getElementById('btn-zoom-fit').addEventListener('click', () => applyZoom(0));
+
+      let resizeTimeout = null;
+      window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+          applyZoom(0);
+        }, 100);
+      }, { passive: true });
+
+      syncUIControls();
+      applyZoom(0);
+      renderPhotosSidebar();
+      renderLayout();
+    }
+
+    window.addEventListener('DOMContentLoaded', initializeApp);
+  </script>
+</body>
+</html>
